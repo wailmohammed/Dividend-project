@@ -103,12 +103,12 @@ export const DividendScenarioPlanner = () => {
       totalAnnualDividends += value * (yieldPercent / 100);
     });
     
-    const avgYield = totalValue > 0 ? (totalAnnualDividends / totalValue) * 100 : 3.5;
+    const avgYield = totalValue > 0 ? (totalAnnualDividends / totalValue) * 100 : 0;
     
     return {
-      totalValue: totalValue || 10000, // Default for demo
-      annualDividends: totalAnnualDividends || 350,
-      avgYield: avgYield || 3.5
+      totalValue,
+      annualDividends: totalAnnualDividends,
+      avgYield
     };
   }, [activePortfolio]);
 

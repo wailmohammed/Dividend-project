@@ -42,7 +42,8 @@ const PortfolioActivityTimeline: React.FC = () => {
   const [showCount, setShowCount] = useState(10);
 
   const events = useMemo((): TimelineEvent[] => {
-    if (isDemoModeEnabled || !transactions?.length) return demoEvents;
+    if (isDemoModeEnabled) return demoEvents;
+    if (!transactions?.length) return [];
 
     return transactions.slice(0, 50).map(t => {
       const iconMap: Record<string, React.ElementType> = { BUY: ShoppingCart, SELL: ArrowDownRight, DIVIDEND: DollarSign, DEPOSIT: Banknote, WITHDRAWAL: ArrowUpRight };

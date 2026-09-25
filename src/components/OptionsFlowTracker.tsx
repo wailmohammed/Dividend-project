@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { usePortfolio } from '@/context/PortfolioContext';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -15,13 +14,10 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
-  Activity, TrendingUp, TrendingDown, Zap, AlertCircle, Building2, Filter,
+  Activity, Zap, AlertCircle, Building2, Filter,
   RotateCcw, Save, Trash2, Bookmark, ChevronDown, Search, Pencil, Copy, Check, X,
   Download, Upload, FilePlus,
 } from 'lucide-react';
-
-const seeded = (seed: number) => { let s = seed; return () => { s = (s * 9301 + 49297) % 233280; return s / 233280; }; };
-const hashStr = (str: string) => { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return Math.abs(h); };
 
 interface FlowItem {
   symbol: string; type: 'CALL' | 'PUT'; side: 'BUY' | 'SELL';
@@ -49,7 +45,6 @@ const defaultFilters: FilterState = {
 interface Preset { id: string; name: string; filters: FilterState; }
 
 const OptionsFlowTracker = () => {
-  const { activePortfolio } = usePortfolio();
   const { user } = useAuth();
   const [state, setState] = useState<FilterState>(defaultFilters);
   const [page, setPage] = useState(1);
@@ -404,33 +399,8 @@ const OptionsFlowTracker = () => {
 
   const resetFilters = () => { setState(defaultFilters); setSelectedPreset(''); setPage(1); };
 
-  const flow = useMemo<FlowItem[]>(() => {
-    const holdings = activePortfolio?.holdings || [];
-    const symbols = holdings.length
-      ? holdings.slice(0, 10).map((h) => h.symbol)
-      : ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'SPY', 'QQQ', 'AMZN', 'META'];
-    const items: FlowItem[] = [];
-    symbols.forEach((sym) => {
-      const rng = seeded(hashStr(sym));
-      const base = holdings.find((h) => h.symbol === sym)?.currentPrice || 100 + rng() * 300;
-      const count = 6 + Math.floor(rng() * 6);
-      for (let i = 0; i < count; i++) {
-        const isCall = rng() > 0.45;
-        const isBuy = rng() > 0.4;
-        const strikeOffset = (rng() - 0.5) * 0.2 * base;
-        const premium = Math.round(50000 + rng() * 950000);
-        items.push({
-          symbol: sym, type: isCall ? 'CALL' : 'PUT', side: isBuy ? 'BUY' : 'SELL',
-          strike: Math.round((base + strikeOffset) * 100) / 100,
-          expiry: EXPIRY_ORDER[Math.floor(rng() * 4)],
-          premium, size: Math.round(100 + rng() * 5000),
-          delta: Math.round((rng() * (isCall ? 1 : -1)) * 100) / 100,
-          unusual: premium > 500000, block: premium > 750000 && rng() > 0.5,
-        });
-      }
-    });
-    return items.sort((a, b) => b.premium - a.premium);
-  }, [activePortfolio]);
+  // No verified options trades feed is connected; never synthesize institutional flow.
+  const flow = useMemo<FlowItem[]>(() => [], []);
 
   const stats = useMemo(() => {
     const callPrem = flow.filter((f) => f.type === 'CALL').reduce((s, f) => s + f.premium, 0);
@@ -481,47 +451,32 @@ const OptionsFlowTracker = () => {
           <Activity className="w-7 h-7 text-primary" /> Options Flow Tracker
         </h1>
         <p className="text-muted-foreground mt-1">
-          Institutional smart-money positioning across your watchlist & holdings.
+          Options trades with verified exchange data, timestamps, and contract details.
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Zap className="w-4 h-4 text-warning" />
-            Delta Pressure — {stats.bullish ? 'Bullish' : 'Bearish'} Bias
-          </CardTitle>
+          <CardTitle className="text-base flex items-center gap-2"><Zap className="w-4 h-4 text-warning" />Options flow feed unavailable</CardTitle>
+          <p className="text-sm text-muted-foreground">Connect a verified options data provider before showing call/put pressure, unusual activity, or block-trade signals.</p>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex h-3 rounded-full overflow-hidden bg-muted">
-            <div className="bg-success transition-all" style={{ width: `${stats.callPct}%` }} />
-            <div className="bg-destructive transition-all" style={{ width: `${stats.putPct}%` }} />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-success" />
-              <span className="text-sm">Calls: <span className="font-semibold">${(stats.callPrem / 1e6).toFixed(2)}M</span> ({stats.callPct.toFixed(1)}%)</span>
-            </div>
-            <div className="flex items-center gap-2 justify-end">
-              <TrendingDown className="w-4 h-4 text-destructive" />
-              <span className="text-sm">Puts: <span className="font-semibold">${(stats.putPrem / 1e6).toFixed(2)}M</span> ({stats.putPct.toFixed(1)}%)</span>
-            </div>
-          </div>
+          <p className="text-sm text-muted-foreground">No live trade records are currently available.</p>
         </CardContent>
       </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card><CardContent className="p-4">
           <div className="text-xs text-muted-foreground">Total Premium Tracked</div>
-          <div className="text-2xl font-bold mt-1">${((stats.callPrem + stats.putPrem) / 1e6).toFixed(2)}M</div>
+          <div className="text-2xl font-bold mt-1">—</div>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <div className="text-xs text-muted-foreground flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Unusual Activity</div>
-          <div className="text-2xl font-bold mt-1 text-warning">{stats.unusualCount}</div>
+          <div className="text-2xl font-bold mt-1 text-warning">—</div>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <div className="text-xs text-muted-foreground flex items-center gap-1"><Building2 className="w-3 h-3" /> Block Trades</div>
-          <div className="text-2xl font-bold mt-1 text-primary">{stats.blockCount}</div>
+          <div className="text-2xl font-bold mt-1 text-primary">—</div>
         </CardContent></Card>
       </div>
 
@@ -735,7 +690,7 @@ const OptionsFlowTracker = () => {
                   </tr>
                 ))}
                 {pageItems.length === 0 && (
-                  <tr><td colSpan={8} className="py-8 text-center text-muted-foreground text-sm">No flow matches the current filters.</td></tr>
+                  <tr><td colSpan={8} className="py-8 text-center text-muted-foreground text-sm">No verified options feed is connected. No sample trades are shown.</td></tr>
                 )}
               </tbody>
             </table>
