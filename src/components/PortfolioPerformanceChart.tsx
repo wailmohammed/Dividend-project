@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Area, AreaChart, ComposedChart } from 'recharts';
-import { TrendingUp, Calendar, Activity, Layers } from 'lucide-react';
-import { usePortfolioSnapshots, PortfolioSnapshot } from '@/hooks/usePortfolioSnapshots';
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Area, AreaChart } from 'recharts';
+import { TrendingUp, Calendar, Activity } from 'lucide-react';
+import { usePortfolioSnapshots } from '@/hooks/usePortfolioSnapshots';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { subDays, format, isAfter, parseISO } from 'date-fns';
 
@@ -10,24 +10,14 @@ interface PortfolioPerformanceChartProps {
 }
 
 type TimeRange = '1D' | '1W' | '1M' | '3M' | '1Y' | 'ALL';
-type ViewMode = 'trend' | 'stacked';
 
 const PortfolioPerformanceChart: React.FC<PortfolioPerformanceChartProps> = ({ totalValue }) => {
   const [timeRange, setTimeRange] = useState<TimeRange>('1M');
-  const [viewMode, setViewMode] = useState<ViewMode>('trend');
   const { activePortfolio } = usePortfolio();
   const { snapshots, loading } = usePortfolioSnapshots(activePortfolio?.id);
 
-  // Cost basis and annual dividend income from current holdings
-  const { costBasis, annualDividends } = useMemo(() => {
-    const holdings = activePortfolio?.holdings || [];
-    const cb = holdings.reduce((sum, h) => sum + (h.shares * h.avgPrice), 0);
-    const div = holdings.reduce((sum, h) => sum + (h.shares * h.currentPrice * (h.dividendYield || 0) / 100), 0);
-    return { costBasis: cb, annualDividends: div };
-  }, [activePortfolio?.holdings]);
-
   // Filter snapshots based on time range and generate chart data
-  const { data, percentChange, absoluteChange, isSimulated } = useMemo(() => {
+  const { data, percentChange, absoluteChange, hasNoHistory } = useMemo(() => {
     const now = new Date();
     let startDate: Date;
     
@@ -41,72 +31,33 @@ const PortfolioPerformanceChart: React.FC<PortfolioPerformanceChartProps> = ({ t
       default: startDate = new Date(0);
     }
 
-    const enrichStacked = (rows: any[]) => {
-      if (rows.length === 0) return rows;
-      const totalDays = Math.max(1, rows.length - 1);
-      const dailyDiv = annualDividends / 365;
-      return rows.map((r, i) => ({
-        ...r,
-        ...(costBasis > 0 ? { costBasis } : {}),
-        estimatedDividends: Math.round(dailyDiv * (i / totalDays) * rows.length),
-      }));
-    };
-
     // Filter and transform snapshots
-    let filteredSnapshots = snapshots.filter(s => 
+    const filteredSnapshots = snapshots.filter(s =>
       isAfter(parseISO(s.snapshot_date), startDate)
     );
 
     if (filteredSnapshots.length > 0) {
-      const chartData = filteredSnapshots.map(s => ({
+      const chartData: { date: string; portfolio: number }[] = filteredSnapshots.map(s => ({
         date: format(parseISO(s.snapshot_date), 'MMM d'),
         portfolio: s.total_value,
       }));
 
-      chartData.push({
-        date: format(now, 'MMM d'),
-        portfolio: totalValue,
-      });
+      const today = format(now, 'yyyy-MM-dd');
+      if (filteredSnapshots[filteredSnapshots.length - 1]?.snapshot_date === today) {
+        chartData[chartData.length - 1].portfolio = totalValue;
+      } else if (totalValue > 0) {
+        chartData.push({ date: format(now, 'MMM d'), portfolio: totalValue });
+      }
 
       const startVal = chartData[0]?.portfolio || totalValue;
       const pctChange = startVal > 0 ? ((totalValue - startVal) / startVal) * 100 : 0;
       const absChange = totalValue - startVal;
 
-      return { data: enrichStacked(chartData), percentChange: pctChange, absoluteChange: absChange, isSimulated: false };
+      return { data: chartData, percentChange: pctChange, absoluteChange: absChange, hasNoHistory: false };
     }
 
-    // Generate mock data if no snapshots
-    const days = timeRange === '1D' ? 24 :
-                 timeRange === '1W' ? 7 :
-                 timeRange === '1M' ? 30 :
-                 timeRange === '3M' ? 90 :
-                 timeRange === '1Y' ? 365 : 730;
-    
-    const baseValue = totalValue * 0.85;
-    const mockData: { date: string; portfolio: number }[] = [];
-    
-    for (let i = days; i >= 0; i--) {
-      const date = new Date(now);
-      if (timeRange === '1D') date.setHours(date.getHours() - i);
-      else date.setDate(date.getDate() - i);
-      
-      const progress = (days - i) / days;
-      const portfolioGrowth = baseValue * (1 + progress * 0.18 + Math.sin(i / 10) * 0.03);
-      
-      mockData.push({
-        date: timeRange === '1D' ? format(date, 'HH:mm') : format(date, 'MMM d'),
-        portfolio: Math.round(portfolioGrowth),
-      });
-    }
-    
-    if (mockData.length > 0) mockData[mockData.length - 1].portfolio = Math.round(totalValue);
-
-    const startVal = mockData[0]?.portfolio || totalValue;
-    const pctChange = startVal > 0 ? ((totalValue - startVal) / startVal) * 100 : 0;
-    const absChange = totalValue - startVal;
-
-    return { data: enrichStacked(mockData), percentChange: pctChange, absoluteChange: absChange, isSimulated: true };
-  }, [snapshots, timeRange, totalValue, costBasis, annualDividends]);
+    return { data: [], percentChange: null, absoluteChange: null, hasNoHistory: true };
+  }, [snapshots, timeRange, totalValue]);
 
 
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -154,54 +105,34 @@ const PortfolioPerformanceChart: React.FC<PortfolioPerformanceChartProps> = ({ t
             <TrendingUp className="w-5 h-5 text-primary" />
             Portfolio value trend
           </h3>
-          <div className="flex items-center gap-3 mt-2">
-            <span className={`text-sm font-bold ${percentChange >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-              {percentChange >= 0 ? '+' : ''}{percentChange.toFixed(2)}%
-            </span>
-            <span className={`text-xs ${absoluteChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              ({absoluteChange >= 0 ? '+' : ''}${Math.abs(absoluteChange).toLocaleString()})
-            </span>
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
-              <Calendar className="w-3 h-3" />
-              {getRangeLabel(timeRange)}
-            </span>
-          </div>
-          {isSimulated && (
-            <p className="text-xs text-amber-500 mt-1 flex items-center gap-1">
-              <Activity className="w-3 h-3" />
-              Illustrative trend only. Portfolio history is not available for this period.
-            </p>
+          {hasNoHistory ? (
+            <p className="mt-2 text-sm text-muted-foreground">{loading ? 'Loading saved history…' : 'History starts with your first recorded daily snapshot.'}</p>
+          ) : (
+            <div className="flex items-center gap-3 mt-2">
+              <span className={`text-sm font-bold ${(percentChange ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                {(percentChange ?? 0) >= 0 ? '+' : ''}{(percentChange ?? 0).toFixed(2)}%
+              </span>
+              <span className={`text-xs ${(absoluteChange ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                ({(absoluteChange ?? 0) >= 0 ? '+' : ''}${Math.abs(absoluteChange ?? 0).toLocaleString()})
+              </span>
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <Calendar className="w-3 h-3" />
+                {getRangeLabel(timeRange)}
+              </span>
+            </div>
           )}
         </div>
         
         <div className="flex flex-wrap items-center gap-2">
-          {/* View Mode Toggle */}
-          <div className="flex bg-muted rounded-lg p-1 gap-1">
-            <button
-              onClick={() => setViewMode('trend')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${
-                viewMode === 'trend' ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <TrendingUp className="w-3 h-3" /> Value trend
-            </button>
-            <button
-              onClick={() => setViewMode('stacked')}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${
-                viewMode === 'stacked' ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Layers className="w-3 h-3" /> Stacked
-            </button>
-          </div>
-
-          {/* Time Range Selector */}
+          {/* A range selector only makes sense once real history exists. */}
+          {!hasNoHistory && (
           <div className="flex bg-muted rounded-lg p-1 gap-1">
             {timeRanges.map((range) => (
               <button
                 key={range}
                 onClick={() => setTimeRange(range)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                aria-pressed={timeRange === range}
+                className={`min-h-11 px-3 py-1.5 text-xs font-medium rounded-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   timeRange === range
                     ? 'bg-primary text-primary-foreground shadow'
                     : 'text-muted-foreground hover:text-foreground'
@@ -211,13 +142,22 @@ const PortfolioPerformanceChart: React.FC<PortfolioPerformanceChartProps> = ({ t
               </button>
             ))}
           </div>
+          )}
         </div>
       </div>
 
       {/* Chart */}
+      {hasNoHistory ? (
+        <div className="flex min-h-[280px] items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 px-6 text-center">
+          <div className="max-w-md">
+            <Activity className="mx-auto mb-3 h-8 w-8 text-muted-foreground/60" aria-hidden="true" />
+            <p className="font-medium text-foreground">No portfolio history for this period yet</p>
+            <p className="mt-1 text-sm text-muted-foreground">This chart will fill with recorded portfolio values over time. No estimated performance is shown.</p>
+          </div>
+        </div>
+      ) : (
       <div className="h-[280px]">
         <ResponsiveContainer width="100%" height="100%">
-          {viewMode === 'trend' ? (
             <AreaChart data={data} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
               <defs>
                 <linearGradient id="portfolioGradient" x1="0" y1="0" x2="0" y2="1">
@@ -232,46 +172,25 @@ const PortfolioPerformanceChart: React.FC<PortfolioPerformanceChartProps> = ({ t
               <Legend wrapperStyle={{ paddingTop: '10px' }} formatter={(value) => <span className="text-xs text-muted-foreground">{value}</span>} />
               <Area type="monotone" dataKey="portfolio" name="Your Portfolio" stroke="hsl(var(--primary))" strokeWidth={2.5} fill="url(#portfolioGradient)" dot={false} activeDot={{ r: 5, fill: 'hsl(var(--primary))', stroke: '#fff', strokeWidth: 2 }} />
             </AreaChart>
-          ) : (
-            <ComposedChart data={data} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
-              <defs>
-                <linearGradient id="marketValueGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.4}/>
-                  <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.05}/>
-                </linearGradient>
-                <linearGradient id="dividendsGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(142 76% 45%)" stopOpacity={0.5}/>
-                  <stop offset="95%" stopColor="hsl(142 76% 45%)" stopOpacity={0.1}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-              <XAxis dataKey="date" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} tickLine={false} axisLine={{ stroke: 'hsl(var(--border))' }} interval="preserveStartEnd" />
-              <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`} width={50} />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend wrapperStyle={{ paddingTop: '10px' }} formatter={(value) => <span className="text-xs text-muted-foreground">{value}</span>} />
-              <Area type="monotone" dataKey="portfolio" name="Market Value" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#marketValueGradient)" dot={false} />
-              <Area type="monotone" dataKey="estimatedDividends" name="Estimated Dividends" stroke="hsl(142 76% 45%)" strokeWidth={1.5} fill="url(#dividendsGradient)" dot={false} />
-              <Line type="monotone" dataKey="costBasis" name="Cost Basis" stroke="hsl(var(--muted-foreground))" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
-            </ComposedChart>
-          )}
         </ResponsiveContainer>
       </div>
+      )}
 
 
       {/* Performance Summary */}
-      <div className="grid grid-cols-3 gap-4 mt-6 pt-4 border-t border-border">
-        <div className="text-center">
-          <p className="text-xs text-muted-foreground mb-1">Portfolio value change</p>
-          <p className={`text-sm font-bold ${percentChange >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-            {percentChange >= 0 ? '+' : ''}{percentChange.toFixed(1)}%
+      <div className={`mt-6 border-t border-border pt-4 ${hasNoHistory ? 'text-center' : 'grid grid-cols-2 gap-4 sm:grid-cols-3'}`}>
+        {!hasNoHistory && <div className="text-center">
+          <p className="text-xs text-muted-foreground mb-1">Value change in selected range</p>
+          <p className={`text-sm font-bold ${(percentChange ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+            {(percentChange ?? 0) >= 0 ? '+' : ''}{(percentChange ?? 0).toFixed(1)}%
           </p>
-        </div>
-        <div className="text-center">
+        </div>}
+        {!hasNoHistory && <div className="text-center">
           <p className="text-xs text-muted-foreground mb-1">Value change</p>
-          <p className={`text-sm font-bold ${absoluteChange >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-            {absoluteChange >= 0 ? '+' : '-'}${Math.abs(absoluteChange).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          <p className={`text-sm font-bold ${(absoluteChange ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+            {(absoluteChange ?? 0) >= 0 ? '+' : '−'}${Math.abs(absoluteChange ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </p>
-        </div>
+        </div>}
         <div className="text-center">
           <p className="text-xs text-muted-foreground mb-1">Current portfolio value</p>
           <p className="text-sm font-bold text-foreground">

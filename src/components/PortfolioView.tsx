@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid, LineChart, Line, ComposedChart, Legend, Treemap } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Treemap } from 'recharts';
 import { usePortfolio } from '../context/PortfolioContext';
 import { PieChart as PieIcon, List, Layers, Globe, Download, Map as MapIcon, History, TrendingUp, Scale, AlertCircle, RefreshCcw, LayoutGrid, CheckCircle2, AlertTriangle, ArrowUpRight, ArrowDownRight, Home, Car, Watch, DollarSign, ArrowUp, ArrowDown, ArrowUpDown, Plus, Pencil, Trash2, X, Save, Eye, RefreshCw, Clock, CheckCircle, XCircle, FlaskConical, Shield } from 'lucide-react';
 import ProofOfWealthModal from './ProofOfWealthModal';
@@ -251,56 +251,19 @@ const PortfolioView: React.FC = () => {
   const assetData = prepareChartData(assetDataMap);
   const countryData = prepareChartData(countryDataMap);
 
-  // Prepare Treemap Data - Use individual holdings for better visualization
-  // Use currentPrice, fallback to avgPrice. If both are 0/missing, use shares * 1 as minimum visual
+  // Show only holdings with a valid current market value; never substitute share count or cost basis.
   const treemapData = holdings
       .map((h, index) => {
-          const currentP = h.currentPrice && h.currentPrice > 0 ? h.currentPrice : 0;
-          const avgP = h.avgPrice && h.avgPrice > 0 ? h.avgPrice : 0;
-          const price = currentP > 0 ? currentP : (avgP > 0 ? avgP : 1); // fallback to 1 for visual
-          const shares = h.shares || 0;
-          const value = shares * price;
+          const value = Number(h.shares || 0) * Number(h.currentPrice || 0);
           return {
               name: cleanSymbol(h.symbol),
               fullName: h.name,
-              size: value > 0 ? value : shares, // At minimum show by share count
+              size: value,
               fill: COLORS[index % COLORS.length]
           };
       })
       .filter(item => item.size > 0 && Number.isFinite(item.size))
       .sort((a, b) => b.size - a.size);
-
-  // Generate Mock Performance Data
-  const generateChartData = () => {
-      const data = [];
-      let currentVal = activePortfolio && activePortfolio.totalValue > 0 ? activePortfolio.totalValue * 0.82 : 10000;
-      let currentBench = activePortfolio && activePortfolio.totalValue > 0 ? activePortfolio.totalValue * 0.88 : 10000;
-
-      for(let i=0; i<365; i++) {
-          const date = new Date();
-          date.setDate(date.getDate() - (365 - i));
-          const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-          const move = 1 + (Math.random() * 0.03 - 0.014);
-          const benchMove = 1 + (Math.random() * 0.02 - 0.0095);
-
-          currentVal = currentVal * move;
-          currentBench = currentBench * benchMove;
-
-          if (i > 350 && activePortfolio && activePortfolio.totalValue > 0) {
-              currentVal = currentVal + (activePortfolio.totalValue - currentVal) / (365 - i);
-          }
-
-          data.push({
-              date: dateStr,
-              value: Math.round(currentVal),
-              benchmark: Math.round(currentBench)
-          });
-      }
-      return data;
-  };
-
-  const chartData = generateChartData();
 
   const handleExport = () => {
       const headers = ['Symbol,Name,Shares,AvgPrice,CurrentPrice,Value,Sector,Country'];
