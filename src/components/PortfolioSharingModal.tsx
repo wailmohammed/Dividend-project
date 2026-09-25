@@ -87,8 +87,8 @@ const PortfolioSharingModal: React.FC<PortfolioSharingModalProps> = ({ isOpen, o
   };
 
   const generateShareCode = () => {
-    return Math.random().toString(36).substring(2, 10) + 
-           Math.random().toString(36).substring(2, 10);
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
   };
 
   const handleTogglePublic = async (checked: boolean) => {

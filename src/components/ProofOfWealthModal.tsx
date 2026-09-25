@@ -67,8 +67,10 @@ const ProofOfWealthModal: React.FC<ProofOfWealthModalProps> = ({ isOpen, onClose
     }
   };
 
-  const generateShareCode = () =>
-    Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
+  const generateShareCode = () => {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  };
 
   const handleGenerate = async () => {
     if (!user || !activePortfolio) return;

@@ -47,8 +47,8 @@ export const TwoFactorSetup: React.FC<TwoFactorSetupProps> = ({ open, onOpenChan
       setQrCodeUrl(qrUrl);
 
       // Generate backup codes
-      const codes = Array.from({ length: 8 }, () => 
-        Math.random().toString(36).substring(2, 8).toUpperCase()
+      const codes = Array.from({ length: 8 }, () =>
+        Array.from(crypto.getRandomValues(new Uint8Array(4)), byte => byte.toString(16).padStart(2, '0')).join('').toUpperCase()
       );
       setBackupCodes(codes);
     } catch (error) {

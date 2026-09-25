@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { MessageSquare, Heart, Share2, TrendingUp, Users, Zap, ArrowRight, ArrowUpRight, ArrowDownRight, Sparkles, Send, UserPlus, UserCheck, Loader2, FlaskConical, BadgeCheck, Flame, Clock, PieChart, Eye, ExternalLink } from 'lucide-react';
+import { MessageSquare, Heart, Share2, TrendingUp, Users, Zap, ArrowRight, Sparkles, Send, UserPlus, UserCheck, Loader2, FlaskConical, Flame, Clock, PieChart, Eye, ExternalLink } from 'lucide-react';
 import { usePortfolio } from '../context/PortfolioContext';
 import { useSocialFeatures } from '../hooks/useSocialFeatures';
 import { formatDistanceToNow } from 'date-fns';
@@ -240,10 +240,6 @@ const CommunityView: React.FC = () => {
                       <div>
                         <div className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-1.5">
                           {post.user_name || 'Anonymous'}
-                          {Math.random() > 0.5 && (
-                            <BadgeCheck className="w-4 h-4 text-blue-500 fill-blue-500" />
-                          )}
-                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">Pro</Badge>
                         </div>
                         <div className="text-xs text-slate-500 flex items-center gap-1">
                           <Clock className="w-3 h-3" />
@@ -282,9 +278,6 @@ const CommunityView: React.FC = () => {
                       {post.tickers.map(ticker => {
                         const asset = getAssetDetails(ticker);
                         if (!asset) return null;
-                        const isPositive = Math.random() > 0.4;
-                        const change = (Math.random() * 3).toFixed(2);
-
                         return (
                           <div key={ticker} onClick={() => viewStock(ticker)} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 group cursor-pointer hover:border-brand-300 dark:hover:border-slate-600 transition-colors">
                             <div className="flex items-center gap-3">
@@ -297,11 +290,7 @@ const CommunityView: React.FC = () => {
                               </div>
                             </div>
                             <div className="text-right">
-                              <div className="font-bold text-slate-900 dark:text-white">${asset.currentPrice}</div>
-                              <div className={`text-xs font-bold flex items-center justify-end gap-1 ${isPositive ? 'text-emerald-500' : 'text-red-500'}`}>
-                                {isPositive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                                {change}%
-                              </div>
+                              <div className="text-xs text-slate-500">Quote unavailable</div>
                             </div>
                           </div>
                         );
@@ -365,7 +354,6 @@ const CommunityView: React.FC = () => {
                         <div>
                           <div className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-1.5">
                             {post.user_name || 'Anonymous'}
-                            <BadgeCheck className="w-4 h-4 text-blue-500 fill-blue-500" />
                           </div>
                           <div className="text-xs text-slate-500">{formatTimeAgo(post.created_at)}</div>
                         </div>
