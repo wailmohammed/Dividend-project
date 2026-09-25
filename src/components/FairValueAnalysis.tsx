@@ -4,10 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Button } from './ui/button';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, ComposedChart } from 'recharts';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Target, BarChart3, ArrowUp, ArrowDown, Minus, Info, RefreshCw, Loader2 } from 'lucide-react';
 import { Alert, AlertDescription } from './ui/alert';
-import { format, subMonths } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -35,10 +34,10 @@ interface ValuationRow {
   symbol: string;
   name: string;
   currentPrice: number;
-  fairValue: number;
+  fairValue: number | null;
   dcfValue: number | null;
-  valuationStatus: 'undervalued' | 'fair' | 'overvalued';
-  upside: number;
+  valuationStatus: 'undervalued' | 'fair' | 'overvalued' | 'unavailable';
+  upside: number | null;
   peRatio: number;
   forwardPe: number;
   pbRatio: number;
@@ -58,14 +57,15 @@ const SECTOR_PE: Record<string, number> = {
   'Communication Services': 20, 'Basic Materials': 15,
 };
 
-const getValuationStatus = (price: number, fairValue: number): 'undervalued' | 'fair' | 'overvalued' => {
+const getValuationStatus = (price: number, fairValue: number | null): ValuationRow['valuationStatus'] => {
+  if (!fairValue || fairValue <= 0 || price <= 0) return 'unavailable';
   const diff = ((price - fairValue) / fairValue) * 100;
   if (diff < -10) return 'undervalued';
   if (diff > 10) return 'overvalued';
   return 'fair';
 };
 
-const getValuationBadge = (status: 'undervalued' | 'fair' | 'overvalued') => {
+const getValuationBadge = (status: ValuationRow['valuationStatus']) => {
   switch (status) {
     case 'undervalued':
       return <Badge className="bg-green-500"><ArrowDown className="w-3 h-3 mr-1" />Undervalued</Badge>;
@@ -73,6 +73,8 @@ const getValuationBadge = (status: 'undervalued' | 'fair' | 'overvalued') => {
       return <Badge variant="secondary"><Minus className="w-3 h-3 mr-1" />Fair Value</Badge>;
     case 'overvalued':
       return <Badge className="bg-red-500"><ArrowUp className="w-3 h-3 mr-1" />Overvalued</Badge>;
+    case 'unavailable':
+      return <Badge variant="outline">No estimate</Badge>;
   }
 };
 
@@ -123,7 +125,7 @@ export const FairValueAnalysis = () => {
       }
     } catch (err) {
       console.warn('Failed to fetch live fundamentals:', err);
-      toast.error('Could not fetch live data, using estimates');
+      toast.error('Could not fetch live fundamentals. Valuation estimates may be unavailable.');
     } finally {
       setLoading(false);
     }
@@ -168,7 +170,7 @@ export const FairValueAnalysis = () => {
       const dcfValue = f?.dcfValue ?? null;
 
       // Compute fair value: prefer DCF, fallback to sector-comparable P/E
-      let fairValue = price;
+      let fairValue: number | null = null;
       if (dcfValue && dcfValue > 0) {
         fairValue = dcfValue;
       } else if (f?.eps && f.eps > 0) {
@@ -176,7 +178,7 @@ export const FairValueAnalysis = () => {
         fairValue = f.eps * sectorPe;
       }
 
-      const upside = ((fairValue - price) / price) * 100;
+      const upside = fairValue !== null && price > 0 ? ((fairValue - price) / price) * 100 : null;
 
       // Use fundamentals first, then market_data_cache as fallback
       const peRatio = f?.peRatio ?? mc?.pe_ratio ?? 0;
@@ -203,7 +205,7 @@ export const FairValueAnalysis = () => {
       };
     }).sort((a, b) => {
       switch (sortBy) {
-        case 'upside': return b.upside - a.upside;
+        case 'upside': return (b.upside ?? -Infinity) - (a.upside ?? -Infinity);
         case 'pe': return a.peRatio - b.peRatio;
         case 'yield': return b.currentYield - a.currentYield;
         default: return 0;
@@ -220,38 +222,27 @@ export const FairValueAnalysis = () => {
 
   const selectedStockData = valuationData.find(d => d.symbol === selectedStock);
 
-  // Simulated price history chart
-  const priceHistoryData = useMemo(() => {
-    if (!selectedStockData) return [];
-    const data = [];
-    for (let i = 24; i >= 0; i--) {
-      const date = subMonths(new Date(), i);
-      const basePrice = selectedStockData.currentPrice;
-      const baseFairValue = selectedStockData.fairValue;
-      const priceVariance = Math.sin(i / 3) * 0.15 + (Math.random() - 0.5) * 0.1;
-      const price = basePrice * (1 - (i / 24) * 0.2 + priceVariance);
-      const fairValue = baseFairValue * (1 - (i / 24) * 0.15);
-      data.push({
-        date: format(date, 'MMM yy'),
-        price: Number(price.toFixed(2)),
-        fairValue: Number(fairValue.toFixed(2)),
-      });
-    }
-    return data;
-  }, [selectedStockData]);
+  const valuationComparison = selectedStockData?.fairValue === null || !selectedStockData
+    ? []
+    : [
+      { measure: 'Current price', value: selectedStockData.currentPrice },
+      { measure: 'Fair value estimate', value: selectedStockData.fairValue },
+    ];
 
   // Portfolio summary
   const portfolioSummary = useMemo(() => {
-    if (valuationData.length === 0) return null;
-    const totalValue = valuationData.reduce((sum, d) => sum + d.value, 0);
-    const undervalued = valuationData.filter(d => d.valuationStatus === 'undervalued');
-    const overvalued = valuationData.filter(d => d.valuationStatus === 'overvalued');
-    const weightedUpside = valuationData.reduce((sum, d) => sum + (d.upside * (d.value / totalValue)), 0);
+    const estimatedRows = valuationData.filter((d): d is ValuationRow & { upside: number } => d.upside !== null);
+    if (estimatedRows.length === 0) return null;
+    const totalValue = estimatedRows.reduce((sum, d) => sum + d.value, 0);
+    const undervalued = estimatedRows.filter(d => d.valuationStatus === 'undervalued');
+    const overvalued = estimatedRows.filter(d => d.valuationStatus === 'overvalued');
+    const weightedUpside = totalValue > 0 ? estimatedRows.reduce((sum, d) => sum + (d.upside * (d.value / totalValue)), 0) : 0;
     return {
       undervaluedCount: undervalued.length,
       overvaluedCount: overvalued.length,
-      fairValueCount: valuationData.length - undervalued.length - overvalued.length,
+      fairValueCount: estimatedRows.filter(d => d.valuationStatus === 'fair').length,
       weightedUpside,
+      estimatedCount: estimatedRows.length,
     };
   }, [valuationData]);
 
@@ -266,11 +257,11 @@ export const FairValueAnalysis = () => {
           </h2>
           <p className="text-sm text-muted-foreground flex items-center gap-2">
             {dataSource === 'live' ? (
-              <Badge variant="outline" className="text-green-500 border-green-500/30 text-xs">LIVE</Badge>
+              <Badge variant="outline" className="text-green-500 border-green-500/30 text-xs">PROVIDER DATA</Badge>
             ) : (
-              <Badge variant="outline" className="text-xs">ESTIMATED</Badge>
+              <Badge variant="outline" className="text-xs">ON-FILE DATA</Badge>
             )}
-            DCF & comparable company valuation
+            Provider DCF where available; otherwise a sector P/E estimate
           </p>
         </div>
         <div className="flex gap-2">
@@ -298,21 +289,21 @@ export const FairValueAnalysis = () => {
             <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Undervalued</CardTitle></CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-500">{portfolioSummary.undervaluedCount}</div>
-              <p className="text-xs text-muted-foreground">Holdings</p>
+              <p className="text-xs text-muted-foreground">of {valuationData.length} holdings</p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Fair Value</CardTitle></CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{portfolioSummary.fairValueCount}</div>
-              <p className="text-xs text-muted-foreground">Holdings</p>
+              <p className="text-xs text-muted-foreground">Estimated holdings</p>
             </CardContent>
           </Card>
           <Card className="border-red-500/30 bg-red-500/5">
             <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Overvalued</CardTitle></CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-500">{portfolioSummary.overvaluedCount}</div>
-              <p className="text-xs text-muted-foreground">Holdings</p>
+              <p className="text-xs text-muted-foreground">of {valuationData.length} holdings</p>
             </CardContent>
           </Card>
           <Card className="border-primary/30 bg-primary/5">
@@ -321,7 +312,7 @@ export const FairValueAnalysis = () => {
               <div className={`text-2xl font-bold ${portfolioSummary.weightedUpside >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                 {portfolioSummary.weightedUpside >= 0 ? '+' : ''}{portfolioSummary.weightedUpside.toFixed(1)}%
               </div>
-              <p className="text-xs text-muted-foreground">Weighted average</p>
+              <p className="text-xs text-muted-foreground">Across {portfolioSummary.estimatedCount} estimated holdings</p>
             </CardContent>
           </Card>
         </div>
@@ -357,15 +348,15 @@ export const FairValueAnalysis = () => {
                   </div>
                   <div className="text-center">
                     {getValuationBadge(selectedStockData.valuationStatus)}
-                    <p className={`text-lg font-bold mt-1 ${selectedStockData.upside >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      {selectedStockData.upside >= 0 ? '+' : ''}{selectedStockData.upside.toFixed(1)}%
+                    <p className={`text-lg font-bold mt-1 ${selectedStockData.upside === null ? 'text-muted-foreground' : selectedStockData.upside >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      {selectedStockData.upside === null ? 'Estimate unavailable' : `${selectedStockData.upside >= 0 ? '+' : ''}${selectedStockData.upside.toFixed(1)}% potential`}
                     </p>
                   </div>
                   <div className="text-right">
                     <p className="text-sm text-muted-foreground">
-                      {selectedStockData.dcfValue ? 'DCF Fair Value' : 'Est. Fair Value'}
+                      {selectedStockData.fairValue === null ? 'Fair value' : selectedStockData.dcfValue ? 'Provider DCF estimate' : 'Sector P/E estimate'}
                     </p>
-                    <p className="text-2xl font-bold text-primary">${selectedStockData.fairValue.toFixed(2)}</p>
+                    <p className="text-2xl font-bold text-primary">{selectedStockData.fairValue === null ? '—' : `$${selectedStockData.fairValue.toFixed(2)}`}</p>
                   </div>
                 </div>
 
@@ -399,24 +390,23 @@ export const FairValueAnalysis = () => {
                   </div>
                 )}
 
-                <ResponsiveContainer width="100%" height={250}>
-                  <ComposedChart data={priceHistoryData}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} domain={['auto', 'auto']} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--popover))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px',
-                      }}
-                      formatter={(value: number) => `$${value.toFixed(2)}`}
-                    />
-                    <Area type="monotone" dataKey="fairValue" fill="hsl(var(--primary) / 0.1)" stroke="none" />
-                    <Line type="monotone" dataKey="price" name="Price" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="fairValue" name="Fair Value" stroke="hsl(var(--chart-2))" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                  </ComposedChart>
-                </ResponsiveContainer>
+                {valuationComparison.length > 0 ? (
+                  <div role="img" aria-label={`Current price and fair value estimate for ${selectedStockData.symbol}`} className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={valuationComparison} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                        <XAxis dataKey="measure" tick={{ fontSize: 11 }} />
+                        <YAxis tickFormatter={(value) => `$${value}`} />
+                        <Tooltip formatter={(value: number) => `$${value.toFixed(2)}`} />
+                        <Bar dataKey="value" name="Price / estimate" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+                    Fair-value data is unavailable for this holding. No estimate is shown.
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -457,10 +447,10 @@ export const FairValueAnalysis = () => {
                       <td className="py-3 px-2"><span className="font-medium">{stock.symbol}</span></td>
                       <td className="py-3 px-2 text-center">{getValuationBadge(stock.valuationStatus)}</td>
                       <td className="py-3 px-2 text-right font-medium">${stock.currentPrice.toFixed(2)}</td>
-                      <td className="py-3 px-2 text-right text-primary">${stock.fairValue.toFixed(2)}</td>
+                      <td className="py-3 px-2 text-right text-primary">{stock.fairValue === null ? '—' : `$${stock.fairValue.toFixed(2)}`}</td>
                       <td className="py-3 px-2 text-right">
-                        <span className={stock.upside >= 0 ? 'text-green-500' : 'text-red-500'}>
-                          {stock.upside >= 0 ? '+' : ''}{stock.upside.toFixed(1)}%
+                        <span className={stock.upside === null ? 'text-muted-foreground' : stock.upside >= 0 ? 'text-green-500' : 'text-red-500'}>
+                          {stock.upside === null ? '—' : `${stock.upside >= 0 ? '+' : ''}${stock.upside.toFixed(1)}%`}
                         </span>
                       </td>
                       <td className="py-3 px-2 text-right">{stock.peRatio > 0 ? `${stock.peRatio.toFixed(1)}x` : '-'}</td>
@@ -483,8 +473,7 @@ export const FairValueAnalysis = () => {
       <Alert>
         <Info className="h-4 w-4" />
         <AlertDescription>
-          Fair value estimates use DCF models from Financial Modeling Prep and comparable company P/E analysis.
-          These are for informational purposes only and should not be considered investment advice.
+          Provider DCF values are shown when available. Otherwise, an EPS × sector P/E heuristic is labeled as a sector P/E estimate; it is not a provider price target. Missing estimates stay blank. Market data and fundamentals depend on the connected provider and may be delayed. Informational only, not investment advice.
         </AlertDescription>
       </Alert>
     </div>

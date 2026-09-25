@@ -165,15 +165,16 @@ export const TechnicalPriceChart = ({ symbol, name }: TechnicalPriceChartProps) 
 
         if (fetchError) throw fetchError;
 
-        if (result?.historical?.[symbol]) {
-          setData(result.historical[symbol]);
-        } else {
-          setData(generateMockHistoricalData(symbol, days));
+        const history = result?.historical?.[symbol];
+        if (Array.isArray(history) && history.length > 0) setData(history);
+        else {
+          setData([]);
+          setError('Historical prices are unavailable from the connected market-data source.');
         }
       } catch (err: any) {
-        console.warn('Using mock historical data:', err);
-        const days = TIME_RANGES.find(t => t.label === timeRange)?.days || 90;
-        setData(generateMockHistoricalData(symbol, days));
+        console.warn('Failed to load historical prices:', err);
+        setData([]);
+        setError('Could not load historical prices. Check the connection and try again.');
       } finally {
         setLoading(false);
       }
@@ -181,46 +182,6 @@ export const TechnicalPriceChart = ({ symbol, name }: TechnicalPriceChartProps) 
 
     fetchHistoricalData();
   }, [symbol, timeRange]);
-
-  const generateMockHistoricalData = (sym: string, days: number): CandleData[] => {
-    const basePrice = getBasePrice(sym);
-    const result: CandleData[] = [];
-    const volatility = sym.includes('BTC') || sym.includes('ETH') ? 0.03 : 0.015;
-    
-    let price = basePrice * 0.85;
-    
-    for (let i = days; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      
-      const change = (Math.random() - 0.48) * volatility * price;
-      const open = price;
-      const close = price + change;
-      const high = Math.max(open, close) * (1 + Math.random() * 0.01);
-      const low = Math.min(open, close) * (1 - Math.random() * 0.01);
-      
-      result.push({
-        date: date.toISOString().split('T')[0],
-        open: Number(open.toFixed(2)),
-        high: Number(high.toFixed(2)),
-        low: Number(low.toFixed(2)),
-        close: Number(close.toFixed(2)),
-        volume: Math.floor(Math.random() * 10000000) + 1000000
-      });
-      
-      price = close;
-    }
-    
-    return result;
-  };
-
-  const getBasePrice = (sym: string): number => {
-    const prices: Record<string, number> = {
-      'AAPL': 178, 'MSFT': 378, 'GOOGL': 141, 'AMZN': 178, 'NVDA': 495,
-      'META': 505, 'TSLA': 248, 'BTC': 67500, 'ETH': 3450, 'VOO': 485
-    };
-    return prices[sym.toUpperCase()] || 100;
-  };
 
   // Calculate technical indicators
   const chartData: ChartData[] = useMemo(() => {

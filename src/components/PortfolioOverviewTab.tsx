@@ -1,13 +1,15 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar, Legend, LineChart, Line, ComposedChart } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis, CartesianGrid, BarChart, Bar } from 'recharts';
 import { usePortfolio } from '../context/PortfolioContext';
 import { useStockPrices } from '@/hooks/useStockPrices';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
-import { TrendingUp, TrendingDown, DollarSign, Briefcase, PiggyBank, Target, Activity, Clock, BarChart3, Users, Globe, Wallet, Wifi, WifiOff, RefreshCcw, Zap } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, Briefcase, PiggyBank, Target, Activity, Clock, BarChart3, Globe, Wallet, Wifi, WifiOff, RefreshCcw, Zap } from 'lucide-react';
 import { cleanSymbol } from '@/lib/utils';
 import { PortfolioGoalTracker } from './PortfolioGoalTracker';
 import { Button } from './ui/button';
+import PortfolioPerformanceChart from './PortfolioPerformanceChart';
+import { useDividends } from '@/hooks/useDividends';
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 const DONUT_COLORS = ['#f97316', '#3b82f6', '#22c55e', '#eab308', '#a855f7', '#ec4899'];
@@ -48,6 +50,7 @@ export const PortfolioOverviewTab: React.FC = () => {
   
   const holdings = activePortfolio?.holdings || [];
   const transactions = activePortfolio?.transactions || [];
+  const { dividends, loading: dividendsLoading } = useDividends(activePortfolio?.id);
   
   // Get symbols for real-time prices
   const symbols = useMemo(() => holdings.map(h => cleanSymbol(h.symbol)), [holdings]);
@@ -64,18 +67,23 @@ export const PortfolioOverviewTab: React.FC = () => {
   
   // Calculate key metrics
   const metrics = useMemo(() => {
-    const totalValue = holdings.reduce((sum, h) => sum + (h.shares || 0) * (h.currentPrice || h.avgPrice || 0), 0);
-    const totalCost = holdings.reduce((sum, h) => sum + (h.shares || 0) * (h.avgPrice || 0), 0);
-    const totalGain = totalValue - totalCost;
+    const currentPrice = (h: typeof holdings[number]) => prices.get(cleanSymbol(h.symbol))?.price ?? (Number(h.currentPrice) || 0);
+    const valuedHoldings = holdings.filter((h) => currentPrice(h) > 0);
+    const unpricedCount = holdings.length - valuedHoldings.length;
+    const holdingsValue = valuedHoldings.reduce((sum, h) => sum + (Number(h.shares) || 0) * currentPrice(h), 0);
+    const totalValue = holdingsValue + (Number(activePortfolio?.cashBalance) || 0);
+    const totalCost = valuedHoldings.reduce((sum, h) => sum + (h.shares || 0) * (h.avgPrice || 0), 0);
+    const totalGain = holdingsValue - totalCost;
     const gainPercent = totalCost > 0 ? (totalGain / totalCost) * 100 : 0;
     
     // Count unique holdings
     const uniqueHoldings = holdings.length;
     
-    // Calculate average dividend yield
-    const avgDividendYield = holdings.length > 0 
-      ? holdings.reduce((sum, h) => sum + (h.dividendYield || 0), 0) / holdings.length 
-      : 0;
+    const estimatedAnnualDividendIncome = holdings.reduce((sum, h) => {
+      const marketValue = (Number(h.shares) || 0) * currentPrice(h);
+      return sum + marketValue * (Number(h.dividendYield) || 0) / 100;
+    }, 0);
+    const estimatedPortfolioYield = totalValue > 0 ? estimatedAnnualDividendIncome / totalValue * 100 : null;
     
     // Calculate transactions this month
     const thisMonth = new Date();
@@ -88,18 +96,21 @@ export const PortfolioOverviewTab: React.FC = () => {
       totalGain,
       gainPercent,
       uniqueHoldings,
-      avgDividendYield,
+      estimatedAnnualDividendIncome,
+      estimatedPortfolioYield,
       transactionsThisMonth,
-      totalTransactions: transactions.length
+      totalTransactions: transactions.length,
+      unpricedCount,
     };
-  }, [holdings, transactions]);
+  }, [activePortfolio?.cashBalance, holdings, transactions, prices]);
 
   // Sector allocation data
   const sectorData = useMemo(() => {
     const sectorMap = new Map<string, number>();
     holdings.forEach(h => {
-      const value = (h.shares || 0) * (h.currentPrice || h.avgPrice || 0);
-      const sector = h.sector || 'Other';
+      const price = prices.get(cleanSymbol(h.symbol))?.price ?? (Number(h.currentPrice) || 0);
+      const value = (Number(h.shares) || 0) * price;
+      const sector = h.sector || 'Unclassified';
       sectorMap.set(sector, (sectorMap.get(sector) || 0) + value);
     });
     return Array.from(sectorMap.entries())
@@ -107,99 +118,68 @@ export const PortfolioOverviewTab: React.FC = () => {
       .filter(item => item.value > 0)
       .sort((a, b) => b.value - a.value)
       .slice(0, 6);
-  }, [holdings]);
+  }, [holdings, prices]);
 
   // Asset type allocation
   const assetTypeData = useMemo(() => {
     const typeMap = new Map<string, number>();
     holdings.forEach(h => {
-      const value = (h.shares || 0) * (h.currentPrice || h.avgPrice || 0);
-      const type = h.assetType || 'Stock';
+      const price = prices.get(cleanSymbol(h.symbol))?.price ?? (Number(h.currentPrice) || 0);
+      const value = (Number(h.shares) || 0) * price;
+      const type = h.assetType || 'Unclassified';
       typeMap.set(type, (typeMap.get(type) || 0) + value);
     });
     return Array.from(typeMap.entries())
       .map(([name, value]) => ({ name, value }))
       .filter(item => item.value > 0);
-  }, [holdings]);
+  }, [holdings, prices]);
 
   // Country/Region allocation
   const countryData = useMemo(() => {
     const countryMap = new Map<string, number>();
     holdings.forEach(h => {
-      const value = (h.shares || 0) * (h.currentPrice || h.avgPrice || 0);
-      const country = h.country || 'USA';
+      const price = prices.get(cleanSymbol(h.symbol))?.price ?? (Number(h.currentPrice) || 0);
+      const value = (Number(h.shares) || 0) * price;
+      const country = h.country || 'Unclassified';
       countryMap.set(country, (countryMap.get(country) || 0) + value);
     });
     return Array.from(countryMap.entries())
       .map(([name, value]) => ({ name, value }))
       .filter(item => item.value > 0)
       .sort((a, b) => b.value - a.value);
-  }, [holdings]);
+  }, [holdings, prices]);
 
-  // Generate mock performance data for chart (last 12 months)
-  const performanceData = useMemo(() => {
-    const data = [];
-    let portfolioValue = metrics.totalValue * 0.75;
-    let benchmarkValue = metrics.totalValue * 0.78;
-    
-    for (let i = 11; i >= 0; i--) {
-      const date = new Date();
-      date.setMonth(date.getMonth() - i);
-      
-      const monthName = date.toLocaleDateString('en-US', { month: 'short' });
-      
-      portfolioValue *= (1 + (Math.random() * 0.08 - 0.03));
-      benchmarkValue *= (1 + (Math.random() * 0.06 - 0.02));
-      
-      if (i === 0) {
-        portfolioValue = metrics.totalValue;
-      }
-      
-      data.push({
-        month: monthName,
-        portfolio: Math.round(portfolioValue),
-        benchmark: Math.round(benchmarkValue)
-      });
-    }
-    return data;
-  }, [metrics.totalValue]);
-
-  // Monthly dividend projection
+  // Summarize actual completed dividend payments for the current calendar year.
   const dividendData = useMemo(() => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const avgMonthlyDividend = (metrics.totalValue * (metrics.avgDividendYield / 100)) / 12;
-    
-    return months.map((month, i) => ({
-      month,
-      estimated: Math.round(avgMonthlyDividend * (0.8 + Math.random() * 0.4)),
-      actual: i < new Date().getMonth() ? Math.round(avgMonthlyDividend * (0.9 + Math.random() * 0.2)) : 0
-    }));
-  }, [metrics.totalValue, metrics.avgDividendYield]);
+    const year = new Date().getFullYear();
+    const received = Array.from({ length: 12 }, (_, month) => ({ month: months[month], amount: 0 }));
+    dividends.filter((dividend) => !dividend.is_estimated).forEach((dividend) => {
+      const paymentDate = new Date(`${dividend.pay_date || dividend.ex_date}T00:00:00`);
+      if (!Number.isNaN(paymentDate.getTime()) && paymentDate.getFullYear() === year && paymentDate <= new Date()) {
+        received[paymentDate.getMonth()].amount += Number(dividend.amount) || 0;
+      }
+    });
+    return received;
+  }, [dividends]);
 
   // Top holdings
   const topHoldings = useMemo(() => {
     return [...holdings]
-      .map(h => ({
-        symbol: cleanSymbol(h.symbol),
-        name: h.name,
-        value: (h.shares || 0) * (h.currentPrice || h.avgPrice || 0),
-        gain: ((h.currentPrice || h.avgPrice || 0) - (h.avgPrice || 0)) * (h.shares || 0),
-        gainPercent: h.avgPrice ? (((h.currentPrice || h.avgPrice) - h.avgPrice) / h.avgPrice) * 100 : 0
-      }))
+      .map(h => {
+        const price = prices.get(cleanSymbol(h.symbol))?.price ?? (Number(h.currentPrice) || 0);
+        const cost = Number(h.avgPrice) || 0;
+        const shares = Number(h.shares) || 0;
+        return {
+          symbol: cleanSymbol(h.symbol),
+          name: h.name,
+          value: shares * price,
+          gainPercent: price > 0 && cost > 0 ? ((price - cost) / cost) * 100 : null,
+        };
+      })
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
-  }, [holdings]);
-
-  // Market correlation mock data
-  const correlationData = useMemo(() => {
-    return [
-      { name: 'S&P 500', correlation: 0.85 },
-      { name: 'NASDAQ', correlation: 0.72 },
-      { name: 'Bonds', correlation: -0.15 },
-      { name: 'Gold', correlation: 0.05 },
-      { name: 'Real Estate', correlation: 0.45 }
-    ];
-  }, []);
+  }, [holdings, prices]);
 
   if (!activePortfolio || holdings.length === 0) {
     return (
@@ -238,7 +218,7 @@ export const PortfolioOverviewTab: React.FC = () => {
           </Badge>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Clock className="w-4 h-4" />
-            <span>Last update: {lastUpdate.toLocaleTimeString()}</span>
+            <span>View refreshed: {lastUpdate.toLocaleTimeString()}</span>
           </div>
           {pricesLoading && (
             <Badge variant="outline" className="gap-1">
@@ -264,6 +244,7 @@ export const PortfolioOverviewTab: React.FC = () => {
               <div>
                 <p className="text-sm text-muted-foreground">Total Value</p>
                 <p className="text-2xl font-bold">${metrics.totalValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}</p>
+                {metrics.unpricedCount > 0 && <p className="mt-1 text-xs text-muted-foreground">{metrics.unpricedCount} holding{metrics.unpricedCount === 1 ? '' : 's'} missing current price</p>}
               </div>
             </div>
           </CardContent>
@@ -306,8 +287,10 @@ export const PortfolioOverviewTab: React.FC = () => {
                 <PiggyBank className="w-5 h-5 text-cyan-500" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Dividend Yield</p>
-                <p className="text-2xl font-bold">{metrics.avgDividendYield.toFixed(2)}%</p>
+                <p className="text-sm text-muted-foreground">Estimated portfolio yield</p>
+                <p className="text-2xl font-bold">{metrics.estimatedPortfolioYield === null ? '—' : `${metrics.estimatedPortfolioYield.toFixed(2)}%`}</p>
+                {metrics.estimatedPortfolioYield !== null && <p className="mt-1 text-xs text-muted-foreground">Based on yields on file</p>}
+                {metrics.estimatedPortfolioYield !== null && <p className="text-xs text-muted-foreground">About ${metrics.estimatedAnnualDividendIncome.toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr</p>}
               </div>
             </div>
           </CardContent>
@@ -317,39 +300,9 @@ export const PortfolioOverviewTab: React.FC = () => {
       {/* Charts Row 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Portfolio Performance Chart */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="w-5 h-5 text-primary" />
-              Portfolio Performance vs Benchmark
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[280px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={performanceData}>
-                  <defs>
-                    <linearGradient id="portfolioGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                    </linearGradient>
-                    <linearGradient id="benchmarkGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
-                  <RechartsTooltip content={<CustomTooltip />} />
-                  <Legend />
-                  <Area type="monotone" dataKey="portfolio" name="Portfolio" stroke="#6366f1" fill="url(#portfolioGradient)" strokeWidth={2} />
-                  <Area type="monotone" dataKey="benchmark" name="S&P 500" stroke="#10b981" fill="url(#benchmarkGradient)" strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="lg:col-span-2">
+          <PortfolioPerformanceChart totalValue={metrics.totalValue} />
+        </div>
 
         {/* Sector Allocation Donut */}
         <Card>
@@ -406,6 +359,14 @@ export const PortfolioOverviewTab: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            {dividendsLoading ? (
+              <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground" role="status">Loading payment records…</div>
+            ) : !dividendData.some((month) => month.amount > 0) ? (
+              <div className="flex h-[200px] flex-col items-center justify-center rounded-xl border border-dashed border-border px-5 text-center">
+                <p className="font-medium text-foreground">No completed payments recorded this year</p>
+                <p className="mt-1 text-sm text-muted-foreground">Forecasts are excluded from this history chart.</p>
+              </div>
+            ) : (
             <div className="h-[200px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={dividendData}>
@@ -413,11 +374,12 @@ export const PortfolioOverviewTab: React.FC = () => {
                   <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={10} />
                   <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} />
                   <RechartsTooltip content={<CustomTooltip />} />
-                  <Bar dataKey="actual" name="Received" fill="#10b981" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="estimated" name="Estimated" fill="#6366f1" radius={[4, 4, 0, 0]} opacity={0.5} />
+                  <Bar dataKey="amount" name="Recorded payments" fill="#10b981" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            )}
+            {!dividendsLoading && dividendData.some((month) => month.amount > 0) && <p className="mt-2 text-xs text-muted-foreground">Completed dividend payments recorded in {new Date().getFullYear()}. Estimates are not included.</p>}
           </CardContent>
         </Card>
 
@@ -465,23 +427,10 @@ export const PortfolioOverviewTab: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-[200px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={correlationData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis type="number" domain={[-1, 1]} stroke="hsl(var(--muted-foreground))" fontSize={10} />
-                  <YAxis type="category" dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={10} width={70} />
-                  <RechartsTooltip 
-                    formatter={(value: number) => [value.toFixed(2), 'Correlation']}
-                    contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }}
-                  />
-                  <Bar 
-                    dataKey="correlation" 
-                    fill="#6366f1"
-                    radius={[0, 4, 4, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="flex min-h-[200px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 px-5 text-center">
+              <Activity aria-hidden="true" className="mb-3 h-7 w-7 text-muted-foreground/60" />
+              <p className="font-medium text-foreground">Correlation needs daily price history</p>
+              <p className="mt-1 text-sm text-muted-foreground">A single market quote cannot show how holdings move together. Correlation will appear when aligned historical prices are available.</p>
             </div>
           </CardContent>
         </Card>
@@ -515,8 +464,8 @@ export const PortfolioOverviewTab: React.FC = () => {
                   </div>
                   <div className="text-right">
                     <p className="font-medium">${holding.value.toLocaleString('en-US', { maximumFractionDigits: 0 })}</p>
-                    <p className={`text-xs ${holding.gainPercent >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                      {holding.gainPercent >= 0 ? '+' : ''}{holding.gainPercent.toFixed(1)}%
+                    <p className={`text-xs ${holding.gainPercent === null ? 'text-muted-foreground' : holding.gainPercent >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                      {holding.gainPercent === null ? 'Return unavailable' : `${holding.gainPercent >= 0 ? '+' : ''}${holding.gainPercent.toFixed(1)}%`}
                     </p>
                   </div>
                 </div>

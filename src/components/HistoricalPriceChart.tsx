@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Skeleton } from './ui/skeleton';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { TrendingUp, TrendingDown, Calendar } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -56,17 +56,16 @@ export const HistoricalPriceChart = ({ symbol, name }: HistoricalPriceChartProps
 
         if (fetchError) throw fetchError;
 
-        if (result?.historical?.[symbol]) {
-          setData(result.historical[symbol]);
-        } else {
-          // Generate mock data if API doesn't support historical
-          const mockData = generateMockHistoricalData(symbol, days);
-          setData(mockData);
+        const history = result?.historical?.[symbol];
+        if (Array.isArray(history) && history.length > 0) setData(history);
+        else {
+          setData([]);
+          setError('Historical prices are unavailable from the connected market-data source.');
         }
       } catch (err: any) {
-        console.warn('Using mock historical data:', err);
-        const days = TIME_RANGES.find(t => t.label === timeRange)?.days || 90;
-        setData(generateMockHistoricalData(symbol, days));
+        console.warn('Failed to load historical prices:', err);
+        setData([]);
+        setError('Could not load historical prices. Check the connection and try again.');
       } finally {
         setLoading(false);
       }
@@ -74,46 +73,6 @@ export const HistoricalPriceChart = ({ symbol, name }: HistoricalPriceChartProps
 
     fetchHistoricalData();
   }, [symbol, timeRange]);
-
-  const generateMockHistoricalData = (sym: string, days: number): CandleData[] => {
-    const basePrice = getBasePrice(sym);
-    const data: CandleData[] = [];
-    const volatility = sym.includes('BTC') || sym.includes('ETH') ? 0.03 : 0.015;
-    
-    let price = basePrice * 0.85;
-    
-    for (let i = days; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      
-      const change = (Math.random() - 0.48) * volatility * price;
-      const open = price;
-      const close = price + change;
-      const high = Math.max(open, close) * (1 + Math.random() * 0.01);
-      const low = Math.min(open, close) * (1 - Math.random() * 0.01);
-      
-      data.push({
-        date: date.toISOString().split('T')[0],
-        open: Number(open.toFixed(2)),
-        high: Number(high.toFixed(2)),
-        low: Number(low.toFixed(2)),
-        close: Number(close.toFixed(2)),
-        volume: Math.floor(Math.random() * 10000000) + 1000000
-      });
-      
-      price = close;
-    }
-    
-    return data;
-  };
-
-  const getBasePrice = (sym: string): number => {
-    const prices: Record<string, number> = {
-      'AAPL': 178, 'MSFT': 378, 'GOOGL': 141, 'AMZN': 178, 'NVDA': 495,
-      'META': 505, 'TSLA': 248, 'BTC': 67500, 'ETH': 3450, 'VOO': 485
-    };
-    return prices[sym.toUpperCase()] || 100;
-  };
 
   const stats = data.length > 0 ? {
     currentPrice: data[data.length - 1]?.close || 0,
@@ -161,14 +120,15 @@ export const HistoricalPriceChart = ({ symbol, name }: HistoricalPriceChartProps
           </div>
           
           {/* Time Range Selector */}
-          <div className="flex gap-1">
+          <div className="flex flex-wrap justify-end gap-1" role="group" aria-label="Historical chart range">
             {TIME_RANGES.map(({ label }) => (
               <Button
                 key={label}
                 variant={timeRange === label ? "default" : "outline"}
                 size="sm"
                 onClick={() => setTimeRange(label)}
-                className="px-2 text-xs"
+                aria-pressed={timeRange === label}
+                className="min-h-11 px-2 text-xs"
               >
                 {label}
               </Button>
@@ -179,7 +139,10 @@ export const HistoricalPriceChart = ({ symbol, name }: HistoricalPriceChartProps
       <CardContent>
         {error ? (
           <div className="flex items-center justify-center h-64 text-muted-foreground">
-            {error}
+            <div className="max-w-md px-4 text-center">
+              <p>{error}</p>
+              <p className="mt-2 text-xs text-muted-foreground">Showing no chart because no verified daily prices were returned.</p>
+            </div>
           </div>
         ) : (
           <>
