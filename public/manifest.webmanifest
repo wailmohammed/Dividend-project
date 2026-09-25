@@ -1,0 +1,9 @@
+{
+  "name": "WealthOS — Halal Portfolio & Dividend Tracker",
+  "short_name": "WealthOS",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#0b1220",
+  "theme_color": "#0b1220",
+  "icons": [{ "src": "/favicon.ico", "sizes": "64x64", "type": "image/x-icon" }]
+}

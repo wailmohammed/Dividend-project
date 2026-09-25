@@ -1,0 +1,38 @@
+name: Edge Function Tests
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/**'
+      - '.github/workflows/edge-function-tests.yml'
+  push:
+    branches: [main]
+
+jobs:
+  deno-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Write .env for tests
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          {
+            echo "VITE_SUPABASE_URL=${VITE_SUPABASE_URL}"
+            echo "VITE_SUPABASE_PUBLISHABLE_KEY=${VITE_SUPABASE_PUBLISHABLE_KEY}"
+          } > .env
+
+      - name: Run Deno tests
+        run: |
+          deno test \
+            --allow-net --allow-env --allow-read \
+            supabase/functions/admin-notifications/index.test.ts \
+            supabase/functions/manage-payment-gateway/index.test.ts \
+            supabase/functions/_tests/hibp_test.ts

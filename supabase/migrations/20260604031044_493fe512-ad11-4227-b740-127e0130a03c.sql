@@ -1,0 +1,1 @@
+ALTER TABLE public.portfolio_snapshots ADD CONSTRAINT portfolio_snapshots_portfolio_date_unique UNIQUE (portfolio_id, snapshot_date);

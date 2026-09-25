@@ -1,0 +1,1 @@
+DROP POLICY IF EXISTS "Service role can insert audit logs" ON public.audit_logs;

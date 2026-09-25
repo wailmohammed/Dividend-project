@@ -1,0 +1,179 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 220 20% 97%;
+    --foreground: 224 40% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 224 40% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 40% 10%;
+
+    --primary: 238.7 83.5% 66.7%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 20% 95%;
+    --secondary-foreground: 224 40% 10%;
+
+    --muted: 220 16% 93%;
+    --muted-foreground: 220 10% 46%;
+
+    --accent: 220 20% 95%;
+    --accent-foreground: 224 40% 10%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 220 16% 90%;
+    --input: 220 16% 90%;
+    --ring: 238.7 83.5% 66.7%;
+
+    --radius: 0.75rem;
+
+    --brand: 238.7 83.5% 66.7%;
+    --brand-foreground: 0 0% 100%;
+
+    --success: 152 60% 42%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 224 20% 30%;
+    --sidebar-primary: 238.7 83.5% 66.7%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 20% 96%;
+    --sidebar-accent-foreground: 224 40% 10%;
+    --sidebar-border: 220 16% 92%;
+    --sidebar-ring: 238.7 83.5% 66.7%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(238.7 83.5% 66.7%), hsl(260 80% 60%));
+    --shadow-card: 0 1px 3px 0 hsl(220 16% 50% / 0.06), 0 1px 2px -1px hsl(220 16% 50% / 0.06);
+    --shadow-card-hover: 0 4px 12px -2px hsl(220 16% 50% / 0.1), 0 2px 6px -2px hsl(220 16% 50% / 0.06);
+  }
+
+  .dark {
+    --background: 228 20% 6%;
+    --foreground: 220 20% 95%;
+
+    --card: 228 18% 9%;
+    --card-foreground: 220 20% 95%;
+
+    --popover: 228 18% 9%;
+    --popover-foreground: 220 20% 95%;
+
+    --primary: 238.7 83.5% 66.7%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 228 16% 14%;
+    --secondary-foreground: 220 20% 95%;
+
+    --muted: 228 16% 14%;
+    --muted-foreground: 220 12% 58%;
+
+    --accent: 228 16% 14%;
+    --accent-foreground: 220 20% 95%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 220 20% 95%;
+
+    --border: 228 14% 16%;
+    --input: 228 14% 16%;
+    --ring: 238.7 83.5% 66.7%;
+
+    --brand: 238.7 83.5% 66.7%;
+    --brand-foreground: 0 0% 100%;
+
+    --success: 152 60% 42%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --sidebar-background: 228 20% 7%;
+    --sidebar-foreground: 220 12% 70%;
+    --sidebar-primary: 238.7 83.5% 66.7%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 228 14% 12%;
+    --sidebar-accent-foreground: 220 20% 95%;
+    --sidebar-border: 228 14% 14%;
+    --sidebar-ring: 238.7 83.5% 66.7%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(238.7 83.5% 66.7%), hsl(260 80% 60%));
+    --shadow-card: 0 1px 3px 0 hsl(228 20% 2% / 0.3), 0 1px 2px -1px hsl(228 20% 2% / 0.3);
+    --shadow-card-hover: 0 4px 12px -2px hsl(228 20% 2% / 0.4), 0 2px 6px -2px hsl(228 20% 2% / 0.3);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+/* Live price ticker animation */
+@keyframes ticker-scroll-left {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-33.333%); }
+}
+
+@keyframes ticker-scroll-right {
+  0% { transform: translateX(-33.333%); }
+  100% { transform: translateX(0); }
+}
+
+.animate-ticker {
+  animation: ticker-scroll-left 30s linear infinite;
+}
+
+.animate-ticker:hover {
+  animation-play-state: paused;
+}
+
+/* Scrollbar styling */
+.sidebar-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 100px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.3);
+}
+
+/* Fade in animation */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.2s ease-out;
+}

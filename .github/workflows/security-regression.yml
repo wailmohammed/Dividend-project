@@ -1,0 +1,108 @@
+name: Security Regression Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Guards against regression of previously-fixed security findings.
+# Fails the build if any of these internal_ids reappear:
+#   - admin_notif_spoof
+#   - default_enc_key_fallback
+#   - SUPA_auth_leaked_password_protection
+#
+# Verification is done through Deno tests (structured pass/fail output +
+# JUnit artifact) rather than shell greps, which are easy to false-pass.
+jobs:
+  regression-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Write .env
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          {
+            echo "VITE_SUPABASE_URL=${VITE_SUPABASE_URL}"
+            echo "VITE_SUPABASE_PUBLISHABLE_KEY=${VITE_SUPABASE_PUBLISHABLE_KEY}"
+          } > .env
+
+      - name: Audit-logs RLS policy set + grants unchanged
+        run: python3 .github/workflows/scripts/check_audit_logs_rls.py
+
+      - name: Run regression + targeted security tests (JUnit report)
+        run: |
+          mkdir -p reports
+          set +e
+          deno test \
+            --allow-net --allow-env --allow-read \
+            --reporter=junit \
+            supabase/functions/_tests/regression_test.ts \
+            supabase/functions/_tests/hibp_test.ts \
+            supabase/functions/_tests/audit_logs_rls_test.ts \
+            supabase/functions/admin-notifications/index.test.ts \
+            supabase/functions/manage-payment-gateway/index.test.ts \
+            > reports/security-regression.junit.xml
+          echo "deno_exit=$?" >> "$GITHUB_ENV"
+          set -e
+
+      - name: Parse JUnit into regression summary
+        if: always()
+        run: |
+          mkdir -p reports
+          python3 .github/workflows/scripts/check_regression_junit.py \
+            reports/security-regression.junit.xml \
+            | tee reports/regression-summary.txt
+          echo "parse_exit=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
+        continue-on-error: true
+
+      - name: Format PR comment body
+        if: always()
+        run: |
+          python3 .github/workflows/scripts/format_regression_comment.py \
+            reports/security-regression.junit.xml \
+            > reports/regression-comment.md
+          cat reports/regression-comment.md
+
+      - name: Post regression summary as PR comment
+        if: always() && github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: security-regression
+          path: reports/regression-comment.md
+
+      - name: Upload JUnit XML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-regression-junit
+          path: reports/security-regression.junit.xml
+          if-no-files-found: warn
+
+      - name: Upload parsed regression summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-regression-summary
+          path: |
+            reports/regression-summary.txt
+            reports/regression-comment.md
+          if-no-files-found: warn
+
+      - name: Fail if regression parse or tests failed
+        if: always()
+        run: |
+          echo "deno_exit=${deno_exit:-0} parse_exit=${parse_exit:-0}"
+          if [ "${parse_exit:-0}" != "0" ] || [ "${deno_exit:-0}" != "0" ]; then
+            exit 1
+          fi
+
+

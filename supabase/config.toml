@@ -1,0 +1,85 @@
+project_id = "jphnufoxwbvidvdslxud"
+
+[functions.scheduled-market-refresh]
+verify_jwt = false
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+api_url = "http://localhost"
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["https://localhost:3000"]
+jwt_expiry = 3600
+enable_signup = true
+enable_anonymous_sign_ins = false
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = false
+
+[functions.market-data]
+verify_jwt = true
+
+[functions.notifications]
+verify_jwt = true
+
+[functions.weekly-summary]
+verify_jwt = false
+
+[functions.scheduled-sync]
+verify_jwt = false
+
+[functions.alert-check]
+verify_jwt = false
+
+[functions.dividend-reminders]
+verify_jwt = false
+
+[functions.webhook-notify]
+verify_jwt = false
+
+[functions.enrich-dividends]
+verify_jwt = false
+
+[functions.check-rate-limit]
+verify_jwt = false
+
+[functions.tax-loss-reminders]
+verify_jwt = false
+
+[functions.extract-tax-document]
+verify_jwt = false
+
+[functions.tax-status-notifications]
+verify_jwt = false
+
+[functions.ai-insights]
+verify_jwt = false
+
+[functions.stock-fundamentals]
+verify_jwt = true
+
+[functions.portfolio-updates]
+verify_jwt = false
+
+[functions.weekly-portfolio-digest]
+verify_jwt = false
+
+[functions.dividend-safety]
+verify_jwt = false
