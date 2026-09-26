@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Bot, Send, User, Loader2, Sparkles, TrendingUp, PieChart, DollarSign, HelpCircle } from 'lucide-react';
+import { Bot, Send, User, Loader2, Sparkles, TrendingUp, PieChart, DollarSign, HelpCircle, Laptop, Cloud } from 'lucide-react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -21,6 +21,8 @@ const AIPortfolioChat: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [provider, setProvider] = useState<'cloud' | 'ollama'>('cloud');
+  const [ollamaModel, setOllamaModel] = useState('llama3.2');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -81,22 +83,38 @@ Portfolio Yield: ${totalValue > 0 ? ((annualDivIncome / totalValue) * 100).toFix
         userMsg,
       ].map(m => ({ role: m.role, content: m.content }));
 
-      const { data, error } = await supabase.functions.invoke('ai-portfolio-chat', {
-        body: {
-          messages: allMessages,
-          portfolioContext,
-        },
-      });
-
-      if (error) throw error;
-
-      const assistantContent = data?.content || data?.error || 'Sorry, I could not generate a response.';
+      let assistantContent: string;
+      if (provider === 'ollama') {
+        const response = await fetch('http://127.0.0.1:11434/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: ollamaModel.trim() || 'llama3.2',
+            messages: [
+              { role: 'system', content: 'You are a portfolio assistant. Analyze only the portfolio figures provided below. They may be stale or user-entered; do not claim current market facts, invent data, or give guarantees. State when information is missing. This is educational information, not personalized financial advice.' },
+              { role: 'user', content: `Portfolio data (may be stale):\n${portfolioContext}` },
+              ...allMessages,
+            ],
+          }),
+        });
+        if (!response.ok) throw new Error(`Ollama returned ${response.status}. Check that Ollama is running and that the selected model is installed.`);
+        const data = await response.json();
+        assistantContent = data?.choices?.[0]?.message?.content || 'Ollama returned an empty response.';
+      } else {
+        const { data, error } = await supabase.functions.invoke('ai-portfolio-chat', {
+          body: { messages: allMessages, portfolioContext },
+        });
+        if (error) throw error;
+        assistantContent = data?.content || data?.error || 'Sorry, I could not generate a response.';
+      }
       setMessages(prev => [...prev, { role: 'assistant', content: assistantContent }]);
     } catch (err: any) {
       console.error('AI chat error:', err);
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: `I encountered an error: ${err.message || 'Unable to connect'}. Please try again.`
+        content: provider === 'ollama'
+          ? `Could not reach local Ollama. Start Ollama, install the selected model, and allow this app origin with OLLAMA_ORIGINS if needed. Details: ${err.message || 'connection failed'}`
+          : `I encountered an error: ${err.message || 'Unable to connect'}. Please try again.`
       }]);
     } finally {
       setIsLoading(false);
@@ -120,6 +138,19 @@ Portfolio Yield: ${totalValue > 0 ? ((annualDivIncome / totalValue) * 100).toFix
         {/* Chat Area */}
         <Card className="lg:col-span-3">
           <CardContent className="p-0 flex flex-col h-[600px]">
+            <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
+              <span className="mr-1 text-xs text-muted-foreground">AI provider</span>
+              <Button type="button" size="sm" variant={provider === 'cloud' ? 'default' : 'outline'} onClick={() => setProvider('cloud')}>
+                <Cloud className="mr-2 h-4 w-4" />Cloud
+              </Button>
+              <Button type="button" size="sm" variant={provider === 'ollama' ? 'default' : 'outline'} onClick={() => setProvider('ollama')}>
+                <Laptop className="mr-2 h-4 w-4" />Local Ollama
+              </Button>
+              {provider === 'ollama' && <Input aria-label="Ollama model name" value={ollamaModel} onChange={event => setOllamaModel(event.target.value)} className="h-8 w-40" placeholder="e.g. llama3.2" />}
+              <span className="basis-full text-xs text-muted-foreground">
+                {provider === 'ollama' ? 'Portfolio context is sent to Ollama on this device. Requires Ollama running locally and the model installed.' : 'Portfolio context is sent to the app’s configured cloud AI service.'}
+              </span>
+            </div>
             {/* Messages */}
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-4">
               {messages.length === 0 && (
@@ -228,7 +259,7 @@ Portfolio Yield: ${totalValue > 0 ? ((annualDivIncome / totalValue) * 100).toFix
             </div>
             <div className="border-t border-border pt-3 mt-3">
               <p className="text-muted-foreground leading-relaxed">
-                The AI has full access to your holdings, allocations, yields, and sector weights to provide personalized advice.
+                The selected provider receives your holdings, allocations, yields, and sector weights. Prices and yields may be stale or incomplete; verify them before acting.
               </p>
             </div>
           </CardContent>

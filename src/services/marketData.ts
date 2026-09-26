@@ -32,63 +32,45 @@ const CRYPTO_MAP: Record<string, string> = {
     'MATIC': 'matic-network'
 };
 
-// Comprehensive Mock Data for Fallback/Testing
-const MOCK_PRICES: Record<string, number> = {
-    'AAPL': 178.35, 'MSFT': 335.20, 'O': 54.10, 'SCHD': 76.45, 'BTC': 62000,
-    'SHEL': 68.50, 'ASML': 900.00, 'HIMX': 5.50, 'JPM': 145.20, 'JNJ': 155.00,
-    'PG': 152.50, 'TSLA': 240.00, 'GOOGL': 135.00, 'KO': 58.00, 'MAIN': 41.50,
-    'PEP': 168.00, 'V': 245.00, 'NVDA': 460.00, 'ABBV': 230.00, 'VOO': 410.00,
-    'ARWK': 42.00, 'PLTR': 17.40, 'AMD': 102.33, 'COIN': 85.20, 'AMZN': 145.00, 'VUSA': 64.10
-};
-
-const getMockPrice = (symbol: string): number | null => {
-    const base = MOCK_PRICES[symbol.toUpperCase()];
-    if (!base) return null;
-    // Add slight random jitter for liveness feel
-    const volatility = 0.002;
-    const change = 1 + (Math.random() * volatility * 2 - volatility);
-    return base * change;
-};
-
 export const fetchCryptoPrice = async (symbol: string): Promise<number | null> => {
     try {
         const id = CRYPTO_MAP[symbol.toUpperCase()];
-        if (!id) return getMockPrice(symbol); // Fallback if not mapped
+        if (!id) return null;
 
         const res = await fetch(`${COINGECKO_API}/simple/price?ids=${id}&vs_currencies=usd`);
         if (!res.ok) throw new Error("CoinGecko API Error");
 
         const data = await res.json();
-        return data[id]?.usd || getMockPrice(symbol);
+        return data[id]?.usd || null;
     } catch (e) {
-        console.warn("CoinGecko fetch failed (using mock):", e);
-        return getMockPrice(symbol);
+        console.warn("CoinGecko fetch failed:", e);
+        return null;
     }
 };
 
 export const fetchStockPrice = async (symbol: string, apiKey: string): Promise<number | null> => {
     // Finnhub API
-    if (!apiKey) return getMockPrice(symbol);
+    if (!apiKey) return null;
 
     try {
         const res = await fetch(`${FINNHUB_API}/quote?symbol=${symbol}&token=${apiKey}`);
 
         if (res.status === 429) {
-            console.warn(`Finnhub Rate Limit (429) for ${symbol}. Using mock.`);
-            return getMockPrice(symbol);
+            console.warn(`Finnhub rate limited for ${symbol}.`);
+            return null;
         }
         if (res.status === 401 || res.status === 403) {
-            console.warn("Finnhub API Key Invalid. Using mock.");
-            return getMockPrice(symbol);
+            console.warn("Finnhub API key is invalid.");
+            return null;
         }
-        if (!res.ok) return getMockPrice(symbol);
+        if (!res.ok) return null;
 
         const data = await res.json();
         // Finnhub 'c' is current price. Ensure it's not 0.
-        return data.c && data.c > 0 ? data.c : getMockPrice(symbol);
+        return data.c && data.c > 0 ? data.c : null;
     } catch (e) {
-        console.warn("Finnhub fetch failed (using mock):", e);
-        return getMockPrice(symbol);
+        console.warn("Finnhub fetch failed:", e);
+        return null;
     }
 };
 
@@ -117,17 +99,7 @@ export const fetchTrading212Positions = async (apiKey: string): Promise<any[]> =
         const data = await res.json();
         return Array.isArray(data) ? data : [];
     } catch (e) {
-        console.warn("Trading 212 Network Error. Returning mock data for demo.");
-
-        // FALLBACK FOR DEMO / CORS ISSUES
-        return [
-            { ticker: "IIPR", quantity: 155, averagePrice: 55.00, currentPrice: 55.00 },
-            { ticker: "SBR", quantity: 250, averagePrice: 75.00, currentPrice: 78.00 },
-            { ticker: "DHT", quantity: 350, averagePrice: 11.50, currentPrice: 11.80 },
-            { ticker: "ABBV", quantity: 25, averagePrice: 225.00, currentPrice: 230.00 },
-            { ticker: "RMR", quantity: 150, averagePrice: 15.50, currentPrice: 15.60 },
-            { ticker: "CVX", quantity: 10, averagePrice: 152.00, currentPrice: 152.00 },
-            { ticker: "VUSA", quantity: 50, averagePrice: 62.20, currentPrice: 64.10 }
-        ];
+        console.warn("Trading 212 fetch failed.");
+        return [];
     }
 };

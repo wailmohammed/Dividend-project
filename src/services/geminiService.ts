@@ -111,11 +111,7 @@ export const analyzeStockRisks = async (symbol: string): Promise<{ strengths: st
     throw new Error("Could not parse response");
   } catch (error) {
     console.warn("Stock Risks Error:", error);
-    // Fallback to generic data on error
-    return {
-      strengths: ["Strong market position", "Consistent revenue growth", "High brand value"],
-      risks: ["Regulatory challenges", "Market saturation", "Economic downturn impact"]
-    };
+    return { strengths: [], risks: [] };
   }
 };
 

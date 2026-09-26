@@ -47,6 +47,7 @@ export const useMarketDataCache = (symbols: string[] = []) => {
 
       const dataMap = new Map<string, CachedMarketData>();
       cachedData?.forEach((item: CachedMarketData) => {
+        if (!item.source || item.source === 'mock' || !(Number(item.price) > 0)) return;
         dataMap.set(item.symbol, item);
       });
       
@@ -104,7 +105,7 @@ export const useMarketDataCache = (symbols: string[] = []) => {
             const newData = payload.new as CachedMarketData;
             
             // Only update if it's a symbol we're tracking
-            if (cleanedSymbols.includes(newData.symbol)) {
+            if (cleanedSymbols.includes(newData.symbol) && newData.source !== 'mock' && Number(newData.price) > 0) {
               setData(prev => {
                 const updated = new Map(prev);
                 const existing = updated.get(newData.symbol);
