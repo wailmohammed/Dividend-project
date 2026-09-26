@@ -21,6 +21,7 @@ import { RecentTriggeredAlerts } from './RecentTriggeredAlerts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { AlertHistoryLog } from './AlertHistoryLog';
 import { toast } from 'sonner';
+import { SupportProject } from './MonetizationDisplay';
 const DashboardView: React.FC = () => {
   const { user } = useAuth();
   const isDemoMode = !user || user.id === 'demo-user' || getDemoModeEnabled();
@@ -195,6 +196,8 @@ const DashboardView: React.FC = () => {
           </AlertDescription>
         </Alert>
       )}
+
+      <SupportProject />
 
       <div className="flex flex-col md:flex-row md:items-end justify-between mb-6 gap-4">
         <div>

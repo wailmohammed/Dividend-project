@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { usePortfolio } from '../context/PortfolioContext';
-import { User, Bell, Shield, CreditCard, Globe, Moon, Sun, Link2, Upload, Briefcase, Clock, RefreshCw, Phone, Mail, MessageSquare, BellRing, Calculator, FlaskConical, Leaf } from 'lucide-react';
+import { User, Bell, Shield, Globe, Moon, Sun, Link2, Upload, Briefcase, Clock, RefreshCw, Phone, Mail, MessageSquare, BellRing, Calculator, FlaskConical, Leaf } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -24,7 +24,6 @@ import { usePushNotifications } from '../hooks/usePushNotifications';
 import { TwoFactorSetup } from './TwoFactorSetup';
 import { supabase } from '@/integrations/supabase/client';
 import { useDemoMode } from '../hooks/useDemoMode';
-import { PayPalCheckoutButton } from './PayPalCheckoutButton';
 
 
 interface MarketRefreshLog {
@@ -33,54 +32,6 @@ interface MarketRefreshLog {
   error_count: number;
   symbols_count: number;
 }
-
-const PLAN_PRICING: Record<'Pro' | 'Ultimate', { monthly: number; annual: number; features: string[] }> = {
-  Pro: {
-    monthly: 9.99,
-    annual: 99,
-    features: ['Unlimited holdings', 'Advanced analytics', 'Dividend forecasting', 'Priority support'],
-  },
-  Ultimate: {
-    monthly: 19.99,
-    annual: 199,
-    features: ['Everything in Pro', 'AI portfolio advisor', 'Options flow', 'Halal & tax modules'],
-  },
-};
-
-const PlanUpgradeCard = ({ plan }: { plan: 'Pro' | 'Ultimate' }) => {
-  const [cycle, setCycle] = useState<'monthly' | 'annual'>('monthly');
-  const def = PLAN_PRICING[plan];
-  const price = cycle === 'annual' ? def.annual : def.monthly;
-  return (
-    <div className="border border-border rounded-lg p-4 space-y-3">
-      <div className="flex items-baseline justify-between">
-        <h4 className="font-semibold">{plan}</h4>
-        <div className="text-right">
-          <div className="text-lg font-bold">${price.toFixed(2)}</div>
-          <div className="text-[10px] text-muted-foreground">/{cycle === 'annual' ? 'year' : 'month'}</div>
-        </div>
-      </div>
-      <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
-        {def.features.map((f) => <li key={f}>{f}</li>)}
-      </ul>
-      <div className="flex gap-1 text-xs">
-        {(['monthly', 'annual'] as const).map((c) => (
-          <button
-            key={c}
-            type="button"
-            onClick={() => setCycle(c)}
-            className={`flex-1 px-2 py-1 rounded border ${
-              cycle === c ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted'
-            }`}
-          >
-            {c === 'annual' ? 'Annual (save ~17%)' : 'Monthly'}
-          </button>
-        ))}
-      </div>
-      <PayPalCheckoutButton plan={plan} cycle={cycle} />
-    </div>
-  );
-};
 
 export const SettingsView = () => {
   const { user } = useAuth();
@@ -527,31 +478,8 @@ export const SettingsView = () => {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CreditCard className="w-5 h-5" />
-                Subscription
-              </CardTitle>
-              <CardDescription>Manage your subscription plan and upgrade with PayPal</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex justify-between items-center p-4 border border-border rounded-lg">
-                <div>
-                  <h3 className="font-semibold text-foreground">Free Plan</h3>
-                  <p className="text-sm text-muted-foreground">Basic features included</p>
-                </div>
-                <span className="text-xs text-muted-foreground">Current</span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {(['Pro', 'Ultimate'] as const).map((plan) => (
-                  <PlanUpgradeCard key={plan} plan={plan} />
-                ))}
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Payments are processed by PayPal using the credentials configured by your workspace super admin.
-              </p>
-            </CardContent>
+            <CardHeader><CardTitle>WealthOS is free</CardTitle><CardDescription>All product features are available without a subscription or payment method.</CardDescription></CardHeader>
+            <CardContent><p className="text-sm text-muted-foreground">Optional support links help cover market data, API, and hosting costs. Donations never unlock features.</p></CardContent>
           </Card>
         </TabsContent>
 

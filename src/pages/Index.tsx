@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useSeo } from '@/hooks/useSeo';
+import { AdSlot, SupportProject } from '@/components/MonetizationDisplay';
 
 const FEATURES = [
   { icon: PieChart, title: 'Portfolio Tracking', desc: 'Track all your investments in one place with real-time pricing and performance metrics.' },
@@ -40,34 +41,7 @@ const TOOL_HIGHLIGHTS = [
   { icon: Wallet, title: 'Tax Loss Harvesting', desc: 'Optimize your tax strategy' },
 ];
 
-const PLANS = [
-  { 
-    name: 'Free', 
-    price: '$0', 
-    desc: 'Get started with the basics',
-    features: ['1 portfolio', 'Basic dividend tracking', 'Price alerts', 'Community access'],
-    cta: 'Get Started Free',
-    highlighted: false
-  },
-  { 
-    name: 'Pro', 
-    price: '$9.99', 
-    period: '/mo',
-    desc: 'For serious investors',
-    features: ['Unlimited portfolios', 'AI advisor & projections', 'Advanced analytics', 'Broker connections', 'Tax reporting', 'Priority support'],
-    cta: 'Start 14-day Trial',
-    highlighted: true
-  },
-  { 
-    name: 'Premium', 
-    price: '$19.99', 
-    period: '/mo',
-    desc: 'Institutional-grade tools',
-    features: ['Everything in Pro', 'Proof of Wealth reports', 'API access', 'Custom benchmarks', 'White-glove onboarding', 'Dedicated support'],
-    cta: 'Contact Sales',
-    highlighted: false
-  },
-];
+const PLANS = [{ name: 'Free', price: '$0', desc: 'Every WealthOS feature, available to everyone.', features: ['All portfolio and dividend tools', 'Research, alerts and analytics', 'AI features where configured', 'No paid tiers or credit card'], cta: 'Create your free account' }];
 
 const Index = () => {
   const { t: tr } = useLanguage();
@@ -167,7 +141,7 @@ const Index = () => {
                   <Star className="w-4 h-4 mr-1.5" /> {tr('Live Demo')}
                 </Button>
               </div>
-              <p className="text-sm text-muted-foreground">{tr('Free forever for basic features • No credit card required')}</p>
+              <p className="text-sm text-muted-foreground">{tr('Free forever • Every feature included • No credit card required')}</p>
 
               {/* Social proof avatars */}
               <div className="flex items-center gap-3 pt-2">
@@ -351,6 +325,7 @@ const Index = () => {
       </section>
 
       {/* Product principles */}
+      <div className="max-w-5xl mx-auto px-6"><AdSlot /></div>
       <section id="testimonials" className="py-20 px-6">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
@@ -379,27 +354,17 @@ const Index = () => {
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold mb-4">{tr('Simple, transparent pricing')}</h2>
-            <p className="text-muted-foreground text-lg">{tr('Start free and upgrade as you grow')}</p>
+            <p className="text-muted-foreground text-lg">{tr('Every feature is free. Optional support helps cover data and hosting costs.')}</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 max-w-xl mx-auto gap-6">
             {PLANS.map(plan => (
-              <Card 
-                key={plan.name} 
-                className={`p-8 relative transition-all hover:-translate-y-1 ${
-                  plan.highlighted ? 'border-primary shadow-lg shadow-primary/10 ring-1 ring-primary/20' : ''
-                }`}
-              >
-                {plan.highlighted && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-primary text-primary-foreground text-xs font-semibold">
-                    {tr('Most Popular')}
-                  </div>
-                )}
+              <Card key={plan.name} className="p-8 relative border-primary shadow-lg shadow-primary/10 ring-1 ring-primary/20">
                 <div className="mb-6">
                   <h3 className="text-xl font-bold">{plan.name}</h3>
                   <p className="text-sm text-muted-foreground mt-1">{tr(plan.desc)}</p>
                   <div className="mt-4">
                     <span className="text-4xl font-black">{plan.price}</span>
-                    {plan.period && <span className="text-muted-foreground text-sm">{tr(plan.period)}</span>}
+                    <span className="text-muted-foreground text-sm"> / forever</span>
                   </div>
                 </div>
                 <ul className="space-y-3 mb-8">
@@ -412,7 +377,7 @@ const Index = () => {
                 </ul>
                 <Button 
                   className="w-full" 
-                  variant={plan.highlighted ? 'default' : 'outline'}
+                  variant="default"
                   onClick={() => navigate('/auth')}
                 >
                   {tr(plan.cta)}
@@ -420,6 +385,7 @@ const Index = () => {
               </Card>
             ))}
           </div>
+          <div className="max-w-xl mx-auto"><SupportProject /></div>
         </div>
       </section>
 
@@ -443,7 +409,7 @@ const Index = () => {
               <Star className="w-4 h-4 mr-1.5" /> {tr('Live Demo')}
             </Button>
           </div>
-          <p className="text-sm text-muted-foreground mt-6">{tr('No credit card required • Free forever for basic features')}</p>
+          <p className="text-sm text-muted-foreground mt-6">{tr('No credit card required • Free forever • Every feature included')}</p>
         </div>
       </section>
 

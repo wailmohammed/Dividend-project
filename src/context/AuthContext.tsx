@@ -9,33 +9,12 @@ const DEFAULT_WALLETS: CryptoWallet[] = [
   { id: '2', coin: 'Ethereum', network: 'ERC20', address: '0x71C7656EC7ab88b098defB751B7401B5f6d8976F', isEnabled: true },
 ];
 
-const DEFAULT_PLANS: SubscriptionPlan[] = [
-  {
-    id: 'Free',
-    name: 'Starter',
-    price: 0,
-    description: 'Essential tracking for beginners.',
-    limits: { portfolios: 1, holdings: 15, connections: 0, watchlists: 1 },
-    features: ['1 Portfolio', 'Up to 15 Holdings', '1 Watchlist', 'Basic Dividend Tracking']
-  },
-  {
-    id: 'Pro',
-    name: 'Investor',
-    price: 15,
-    isPopular: true,
-    description: 'Automated analytics for growing portfolios.',
-    limits: { portfolios: 3, holdings: -1, connections: 5, watchlists: 3 },
-    features: ['3 Portfolios', 'Unlimited Holdings', '5 Broker Connections', '3 Watchlists', 'Dividend Calendar', 'Future Wealth Projection']
-  },
-  {
-    id: 'Ultimate',
-    name: 'Wealth Master',
-    price: 30,
-    description: 'Complete ecosystem for serious investors.',
-    limits: { portfolios: -1, holdings: -1, connections: -1, watchlists: -1 },
-    features: ['Unlimited Portfolios', 'Unlimited Broker Connections', 'Unlimited Watchlists', 'AI Insights', 'VIP Support']
-  }
-];
+const DEFAULT_PLANS: SubscriptionPlan[] = [{
+  id: 'Free', name: 'WealthOS Free', price: 0,
+  description: 'Every WealthOS feature, free for everyone.',
+  limits: { portfolios: -1, holdings: -1, connections: -1, watchlists: -1 },
+  features: ['All portfolio and dividend tools', 'Research, alerts and analytics', 'No paid tiers']
+}];
 
 interface AuthContextType {
   user: User | null;
@@ -151,7 +130,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (profile && !error) {
         name = profile.full_name || 'User';
-        plan = (profile.plan as PlanTier) || 'Free';
+        // Legacy paid tier values are normalized: WealthOS is free for every user.
+        plan = 'Free';
         avatar = profile.avatar_url || undefined;
         joinedDate = profile.created_at?.split('T')[0] || joinedDate;
       }
@@ -167,7 +147,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Demo account override
       if (email.toLowerCase() === 'demo@wealthos.com') {
         role = 'USER';
-        plan = 'Pro';
+        plan = 'Free';
         name = 'Demo User';
       }
 
@@ -215,7 +195,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: 'demo@wealthos.com',
         name: 'Demo User',
         role: 'USER',
-        plan: 'Pro',
+        plan: 'Free',
         joinedDate: new Date().toISOString().split('T')[0],
       });
       return true;

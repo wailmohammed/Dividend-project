@@ -12,7 +12,6 @@ import EmailTemplateManager from './EmailTemplateManager';
 import ScheduledSyncManager from './ScheduledSyncManager';
 import { MarketSyncDashboard } from './MarketSyncDashboard';
 import { AdminSecuritySettings } from './AdminSecuritySettings';
-import { PaymentGatewaySettings } from './PaymentGatewaySettings';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Button } from './ui/button';
@@ -21,41 +20,14 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { toast } from 'sonner';
-import { CryptoWallet, PlanTier, SubscriptionPlan } from '../types';
+import { CryptoWallet } from '../types';
 import { Switch } from './ui/switch';
-
-const DEFAULT_PLANS: SubscriptionPlan[] = [
-  {
-    id: 'Free',
-    name: 'Starter',
-    price: 0,
-    description: 'Essential tracking for beginners.',
-    limits: { portfolios: 1, holdings: 15, connections: 0, watchlists: 1 },
-    features: ['1 Portfolio', 'Up to 15 Holdings', '1 Watchlist', 'Basic Dividend Tracking']
-  },
-  {
-    id: 'Pro',
-    name: 'Investor',
-    price: 15,
-    isPopular: true,
-    description: 'Automated analytics for growing portfolios.',
-    limits: { portfolios: 3, holdings: -1, connections: 5, watchlists: 3 },
-    features: ['3 Portfolios', 'Unlimited Holdings', '5 Broker Connections', '3 Watchlists', 'Dividend Calendar', 'Future Wealth Projection']
-  },
-  {
-    id: 'Ultimate',
-    name: 'Wealth Master',
-    price: 30,
-    description: 'Complete ecosystem for serious investors.',
-    limits: { portfolios: -1, holdings: -1, connections: -1, watchlists: -1 },
-    features: ['Unlimited Portfolios', 'Unlimited Broker Connections', 'Unlimited Watchlists', 'AI Insights', 'VIP Support']
-  }
-];
+import { MonetizationSettingsPanel } from './MonetizationSettingsPanel';
 
 const AdminView: React.FC = () => {
-  const { user: currentUser, wallets, addWallet, removeWallet, toggleWallet, plans: contextPlans, updatePlanPrice } = useAuth();
+  const { user: currentUser, wallets, addWallet, removeWallet, toggleWallet } = useAuth();
   const { role, isSuperAdmin } = useUserRole(currentUser?.id);
-  const { users, loading: usersLoading, updateUserRole, deleteUser, updateUserPlan, refetch: refetchUsers } = useAdminUsers();
+  const { users, loading: usersLoading, updateUserRole, deleteUser, refetch: refetchUsers } = useAdminUsers();
   const { providers } = useBrokerConnections();
   const { logs: auditLogs, loading: logsLoading, refetch: refetchLogs } = useAuditLogs();
   const { settings: twilioSettings, loading: twilioLoading, toggleSmsNotifications, refetch: refetchTwilio } = useTwilioSettings();
@@ -70,7 +42,7 @@ const AdminView: React.FC = () => {
   // Server-side rate limiter for secure enforcement
   const { checkRateLimit: checkServerRateLimit, isChecking: isCheckingRateLimit } = useServerRateLimiter();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'payment' | 'users' | 'plans' | 'brokerage' | 'system' | 'audit' | 'security'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'brokerage' | 'system' | 'audit' | 'security' | 'funding'>('overview');
   const [isAddWalletModalOpen, setIsAddWalletModalOpen] = useState(false);
   const [isAddBrokerModalOpen, setIsAddBrokerModalOpen] = useState(false);
   const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false);
@@ -98,8 +70,6 @@ const AdminView: React.FC = () => {
   const [isSavingTwilio, setIsSavingTwilio] = useState(false);
   const [isSendingTestSms, setIsSendingTestSms] = useState(false);
   const [testPhoneNumber, setTestPhoneNumber] = useState('');
-
-  const plans = contextPlans.length > 0 ? contextPlans : DEFAULT_PLANS;
 
   const handleAddWallet = (e: React.FormEvent) => {
     e.preventDefault();
@@ -163,20 +133,6 @@ const AdminView: React.FC = () => {
       refetchLogs();
     } catch (error: any) {
       toast.error(error.message || 'Failed to delete user');
-    }
-  };
-
-  const handleUpdatePlan = async (userId: string, plan: string) => {
-    const targetUser = users.find(u => u.id === userId);
-    const oldPlan = targetUser?.plan || 'Free';
-    
-    try {
-      await updateUserPlan(userId, plan);
-      await sendAdminNotification('plan_upgrade', userId, { oldPlan, newPlan: plan });
-      toast.success('User plan updated and notification sent');
-      refetchLogs();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to update plan');
     }
   };
 
@@ -296,8 +252,6 @@ const AdminView: React.FC = () => {
   };
 
   // Stats calculations
-  const totalRevenue = users.reduce((acc, curr) => acc + (plans.find(p => p.id === curr.plan)?.price || 0), 0);
-  const paidUsers = users.filter(u => u.plan !== 'Free').length;
   const adminCount = users.filter(u => u.role === 'admin' || u.role === 'super_admin').length;
 
   return (
@@ -310,7 +264,7 @@ const AdminView: React.FC = () => {
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
             {isSuperAdmin
-              ? 'Full system access: Manage Users, Brokerage Hub, Payment Systems, and System Settings.'
+              ? 'Manage users, brokerage integrations, free project funding, and system settings.'
               : 'Manage Users and Projects. Payment and System settings are restricted.'}
           </p>
         </div>
@@ -332,11 +286,8 @@ const AdminView: React.FC = () => {
               <button onClick={() => setActiveTab('security')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'security' ? 'bg-red-500 text-white' : 'text-muted-foreground hover:text-foreground'}`}>
                 <Key className="w-4 h-4" /> Security
               </button>
-              <button onClick={() => setActiveTab('payment')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'payment' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
-                <Wallet className="w-4 h-4" /> Payment System
-              </button>
-              <button onClick={() => setActiveTab('plans')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'plans' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
-                <DollarSign className="w-4 h-4" /> Plans
+              <button onClick={() => setActiveTab('funding')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'funding' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+                <DollarSign className="w-4 h-4" /> Free Project Funding
               </button>
               <button onClick={() => setActiveTab('system')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'system' ? 'bg-amber-500 text-white' : 'text-muted-foreground hover:text-foreground'}`}>
                 <Settings2 className="w-4 h-4" /> System
@@ -363,19 +314,11 @@ const AdminView: React.FC = () => {
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Active Subscriptions</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Free User Accounts</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-4xl font-bold text-foreground">{paidUsers}</div>
-                {isSuperAdmin ? (
-                  <div className="text-primary text-sm mt-2">
-                    ${totalRevenue} / mo revenue
-                  </div>
-                ) : (
-                  <div className="text-muted-foreground text-xs mt-2 flex items-center gap-1">
-                    <Lock className="w-3 h-3" /> Revenue hidden
-                  </div>
-                )}
+                <div className="text-4xl font-bold text-foreground">{users.filter(account => account.role === 'user').length}</div>
+                <div className="text-muted-foreground text-sm mt-2">No user subscription charges</div>
               </CardContent>
             </Card>
             <Card>
@@ -416,9 +359,9 @@ const AdminView: React.FC = () => {
               </Button>
               {isSuperAdmin && (
                 <>
-                  <Button variant="outline" onClick={() => setActiveTab('payment')} className="h-auto py-4 flex flex-col gap-2">
-                    <Wallet className="w-6 h-6" />
-                    <span>Payment System</span>
+                  <Button variant="outline" onClick={() => setActiveTab('funding')} className="h-auto py-4 flex flex-col gap-2">
+                    <DollarSign className="w-6 h-6" />
+                    <span>Free Project Funding</span>
                   </Button>
                   <Button variant="outline" onClick={() => setActiveTab('system')} className="h-auto py-4 flex flex-col gap-2 border-amber-500/50 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-500/10">
                     <Settings2 className="w-6 h-6" />
@@ -497,10 +440,7 @@ const AdminView: React.FC = () => {
           </CardContent>
         </Card>
       )}
-      {/* PAYMENT GATEWAY TAB (SUPER ADMIN ONLY) */}
-      {activeTab === 'payment' && isSuperAdmin && (
-        <PaymentGatewaySettings />
-      )}
+      {activeTab === 'funding' && isSuperAdmin && <MonetizationSettingsPanel userId={currentUser?.id} />}
       {/* USERS TAB */}
       {activeTab === 'users' && (
         <Card>
@@ -565,19 +505,7 @@ const AdminView: React.FC = () => {
                           </Select>
                         </td>
                         <td className="px-6 py-4">
-                          <Select
-                            value={u.plan || 'Free'}
-                            onValueChange={(value) => handleUpdatePlan(u.id, value)}
-                          >
-                            <SelectTrigger className="w-[120px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Free">Free</SelectItem>
-                              <SelectItem value="Pro">Pro</SelectItem>
-                              <SelectItem value="Ultimate">Ultimate</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          <span className="rounded bg-primary/10 px-2 py-1 text-xs font-medium text-primary">Free</span>
                         </td>
                         <td className="px-6 py-4 text-muted-foreground">
                           {new Date(u.created_at).toLocaleDateString()}
@@ -700,51 +628,6 @@ const AdminView: React.FC = () => {
             )}
           </CardContent>
         </Card>
-      )}
-
-      {/* PLANS TAB */}
-      {activeTab === 'plans' && isSuperAdmin && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {plans.map(plan => (
-            <Card key={plan.id} className={plan.isPopular ? 'border-primary' : ''}>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  {plan.name}
-                  {plan.isPopular && (
-                    <span className="text-xs bg-primary text-primary-foreground px-2 py-1 rounded">Popular</span>
-                  )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="text-3xl font-bold text-foreground">
-                  ${plan.price}<span className="text-sm text-muted-foreground font-normal">/mo</span>
-                </div>
-                <p className="text-sm text-muted-foreground">{plan.description}</p>
-                <ul className="space-y-2">
-                  {plan.features.map((feature, i) => (
-                    <li key={i} className="text-sm text-muted-foreground flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                      {feature}
-                    </li>
-                  ))}
-                </ul>
-                <div className="pt-4">
-                  <Label>Update Price</Label>
-                  <div className="flex gap-2 mt-1">
-                    <Input
-                      type="number"
-                      defaultValue={plan.price}
-                      min={0}
-                      className="w-24"
-                      onBlur={(e) => updatePlanPrice(plan.id, Number(e.target.value))}
-                    />
-                    <span className="text-muted-foreground self-center">USD/month</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
       )}
 
       {/* SYSTEM TAB (SUPER ADMIN ONLY) */}
