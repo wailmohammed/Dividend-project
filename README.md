@@ -27,17 +27,20 @@ The database schema is managed by the ordered SQL migrations in
 `src/integrations/supabase/types.ts` after applying them; do not edit the hosted
 database by hand.
 
-Before applying migrations, install the [Supabase CLI](https://supabase.com/docs/guides/cli),
-start Docker Desktop for local database checks, and verify the target project:
+For a **new production database**, create a new Supabase project first. Keep the
+existing project untouched until the new database has been configured and
+verified. Install the [Supabase CLI](https://supabase.com/docs/guides/cli), then
+link this checkout to the new project's reference (shown in its Supabase URL):
 
 ```sh
 supabase login
-supabase link --project-ref jphnufoxwbvidvdslxud
+supabase link --project-ref <NEW_PROJECT_REF>
 supabase migration list --linked
 supabase db push --dry-run
 ```
 
-Review the dry run and take a database backup before applying pending migrations:
+For a brand-new empty project, review the dry run, then apply the migration
+history and deploy the Edge Functions:
 
 ```sh
 supabase db push
@@ -48,13 +51,22 @@ To validate the full migration chain locally before a production change, run
 `supabase start` followed by `supabase db reset`. That rebuilds the local database
 from the migration history and is separate from the linked hosted project.
 
+Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env` to the new
+project's API URL and publishable key. Update the matching GitHub Actions secrets
+before building or deploying the app. Never put the service-role key or database
+password in browser environment variables.
+
 The free-project funding migration normalizes old account plans to `Free`, marks
 legacy app subscription rows canceled, disables subscription payment gateways,
 and creates the public donation/ad settings table. This preserves the user free
 model when the migration is applied. The app does not store payment processor
 secrets in this table.
 
-Set the production site URL and OAuth redirect URLs in Supabase Auth settings.
+After choosing and connecting the production domain to the hosting provider, set
+that exact HTTPS origin as the Supabase Auth **Site URL** and add its auth callback
+URL to the allowed redirect URLs. The app builds OAuth redirects from the current
+origin, so the same build works on localhost and the custom domain. The current
+local Auth URL entries in `supabase/config.toml` are for development only.
 Configure any required Edge Function secrets in Supabase **Secrets**, not in
 `.env` or GitHub source. Market-data keys, AI-provider keys, mail/SMS credentials,
 and encryption keys are optional or feature-specific; never substitute a
@@ -120,17 +132,14 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
-## How can I deploy this project?
+## Hosting and custom domain
 
-Simply open [Lovable](https://lovable.dev/projects/260ab8d9-fa87-4fb0-91da-fd42a1fa7e6a) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+Build the app with `npm run build` and deploy the generated `dist/` directory to
+your chosen static hosting provider. Configure the domain's DNS records at the
+registrar as directed by that provider, enable HTTPS, and set the production
+domain as the Supabase Auth Site URL and allowed redirect origin described above.
+The repository includes GitHub Actions workflows for validation; hosting
+deployment still needs to be configured for the selected provider.
 
 ## CI / GitHub Actions secrets
 
@@ -181,4 +190,3 @@ Regression coverage lives in
 `supabase/functions/_tests/audit_logs_rls_test.ts` and asserts that (a) the
 anon key cannot read `admin_notifications_rejected` rows and (b) the required
 grants exist in the migration history with no anon grant.
-

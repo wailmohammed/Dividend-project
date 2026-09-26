@@ -1,4 +1,4 @@
-project_id = "jphnufoxwbvidvdslxud"
+project_id = "dividend-tracker-local"
 
 [functions.scheduled-market-refresh]
 verify_jwt = false
