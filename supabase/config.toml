@@ -22,8 +22,8 @@ api_url = "http://localhost"
 
 [auth]
 enabled = true
-site_url = "http://localhost:3000"
-additional_redirect_urls = ["https://localhost:3000"]
+site_url = "http://localhost:8080"
+additional_redirect_urls = ["http://127.0.0.1:8080", "https://localhost:8080"]
 jwt_expiry = 3600
 enable_signup = true
 enable_anonymous_sign_ins = false

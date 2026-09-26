@@ -34,13 +34,14 @@ export const NarrativeAnalysis = () => {
 
   useEffect(() => {
     let cancelled = false;
-    if (!symbols.length) { setSnapshots({}); return; }
+    if (!symbols.length) { setSnapshots({}); setLoading(false); return; }
     setLoading(true);
     setError('');
-    supabase.from('market_data_cache')
-      .select('symbol, price, change_percent, dividend_yield, pe_ratio, market_cap, sector, source, updated_at')
-      .in('symbol', symbols)
-      .then(({ data, error: queryError }) => {
+    void (async () => {
+      try {
+        const { data, error: queryError } = await supabase.from('market_data_cache')
+          .select('symbol, price, change_percent, dividend_yield, pe_ratio, market_cap, sector, source, updated_at')
+          .in('symbol', symbols);
         if (cancelled) return;
         if (queryError) { setError('Could not read the market-data cache.'); setSnapshots({}); return; }
         const rows: Record<string, CompanySnapshot> = {};
@@ -59,9 +60,12 @@ export const NarrativeAnalysis = () => {
           };
         });
         setSnapshots(rows);
-      })
-      .catch(() => { if (!cancelled) setError('Could not load the market-data cache.'); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      } catch {
+        if (!cancelled) setError('Could not load the market-data cache.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
     return () => { cancelled = true; };
   }, [symbols.join('|')]);
 
@@ -114,3 +118,5 @@ export const NarrativeAnalysis = () => {
     </div>
   );
 };
+
+export default NarrativeAnalysis;

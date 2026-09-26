@@ -8,10 +8,14 @@ export function useMonetizationSettings() {
 
   useEffect(() => {
     let active = true;
-    (supabase as any).from('monetization_settings').select('*').eq('id', true).maybeSingle()
+    supabase.from('monetization_settings').select('*').eq('id', true).maybeSingle()
       .then(({ data, error }) => {
         if (!active) return;
-        if (!error && data) setSettings({ ...DEFAULT_MONETIZATION_SETTINGS, ...data });
+        if (!error && data) setSettings({
+          ...DEFAULT_MONETIZATION_SETTINGS,
+          ...data,
+          donation_links: Array.isArray(data.donation_links) ? data.donation_links as unknown as MonetizationSettings['donation_links'] : [],
+        });
         setLoading(false);
       });
     const channel = supabase.channel('public-monetization-settings')

@@ -14,9 +14,18 @@ export function MonetizationSettingsPanel({ userId }: { userId?: string }) {
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
-    (supabase as any).from('monetization_settings').select('*').eq('id', true).maybeSingle().then(({ data, error }: any) => {
+    supabase.from('monetization_settings').select('*').eq('id', true).maybeSingle().then(({ data, error }) => {
       if (error) toast.error(`Could not load funding settings: ${error.message}`);
-      if (data) setSettings({ ...DEFAULT_MONETIZATION_SETTINGS, ...data });
+      if (data) {
+        const donationLinks = Array.isArray(data.donation_links)
+          ? (data.donation_links as unknown[]).filter((item): item is DonationLink => {
+              if (!item || typeof item !== 'object') return false;
+              const link = item as Record<string, unknown>;
+              return typeof link.label === 'string' && typeof link.url === 'string' && typeof link.enabled === 'boolean';
+            })
+          : [];
+        setSettings({ ...DEFAULT_MONETIZATION_SETTINGS, ...data, donation_links: donationLinks });
+      }
       setLoaded(true);
     });
   }, []);
@@ -33,7 +42,13 @@ export function MonetizationSettingsPanel({ userId }: { userId?: string }) {
       return;
     }
     setSaving(true);
-    const { error } = await (supabase as any).from('monetization_settings').upsert({ id: true, ...settings, updated_by: userId, updated_at: new Date().toISOString() });
+    const { error } = await supabase.from('monetization_settings').upsert({
+      id: true,
+      ...settings,
+      donation_links: settings.donation_links.map(({ label, url, enabled }) => ({ label, url, enabled })),
+      updated_by: userId,
+      updated_at: new Date().toISOString(),
+    });
     setSaving(false);
     if (error) toast.error(`Could not save settings: ${error.message}`);
     else toast.success('Funding settings saved.');

@@ -82,7 +82,7 @@ const LivePriceTicker: React.FC = () => {
   const { data: pricesMap, isConnected, getPrice } = useMarketDataCache(allSymbols);
 
   const marketItems: TickerItem[] = useMemo(() => {
-    return MARKET_INDICES.map(idx => {
+    return MARKET_INDICES.map<TickerItem | null>(idx => {
       const priceData = getPrice(idx.symbol);
       if (!priceData || !Number.isFinite(priceData.price) || priceData.price <= 0) return null;
       return {

@@ -887,6 +887,50 @@ export type Database = {
         }
         Relationships: []
       }
+      monetization_settings: {
+        Row: {
+          ads_enabled: boolean
+          adsense_publisher_id: string
+          consent_management_ready: boolean
+          donations_enabled: boolean
+          donation_links: Json
+          id: boolean
+          public_content_ad_slot: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          ads_enabled?: boolean
+          adsense_publisher_id?: string
+          consent_management_ready?: boolean
+          donations_enabled?: boolean
+          donation_links?: Json
+          id?: boolean
+          public_content_ad_slot?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          ads_enabled?: boolean
+          adsense_publisher_id?: string
+          consent_management_ready?: boolean
+          donations_enabled?: boolean
+          donation_links?: Json
+          id?: boolean
+          public_content_ad_slot?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "monetization_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_preferences: {
         Row: {
           created_at: string

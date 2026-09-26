@@ -4,6 +4,66 @@
 
 **URL**: https://lovable.dev/projects/260ab8d9-fa87-4fb0-91da-fd42a1fa7e6a
 
+## Local setup
+
+Use Node.js 22 and npm. Copy `.env.example` to `.env`, then set the Supabase URL,
+publishable key, and project reference for your environment. The publishable key
+is designed for browser use; never place a Supabase service-role key or database
+password in a `VITE_` variable.
+
+```powershell
+Copy-Item .env.example .env
+npm ci
+npm run dev
+```
+
+The Vite development server uses port `8080`. Local Supabase Auth callback URLs
+are set for that port in `supabase/config.toml`.
+
+## Database and deployment
+
+The database schema is managed by the ordered SQL migrations in
+`supabase/migrations/`. Keep schema changes in new migrations and regenerate
+`src/integrations/supabase/types.ts` after applying them; do not edit the hosted
+database by hand.
+
+Before applying migrations, install the [Supabase CLI](https://supabase.com/docs/guides/cli),
+start Docker Desktop for local database checks, and verify the target project:
+
+```sh
+supabase login
+supabase link --project-ref jphnufoxwbvidvdslxud
+supabase migration list --linked
+supabase db push --dry-run
+```
+
+Review the dry run and take a database backup before applying pending migrations:
+
+```sh
+supabase db push
+supabase functions deploy --all
+```
+
+To validate the full migration chain locally before a production change, run
+`supabase start` followed by `supabase db reset`. That rebuilds the local database
+from the migration history and is separate from the linked hosted project.
+
+The free-project funding migration normalizes old account plans to `Free`, marks
+legacy app subscription rows canceled, disables subscription payment gateways,
+and creates the public donation/ad settings table. This preserves the user free
+model when the migration is applied. The app does not store payment processor
+secrets in this table.
+
+Set the production site URL and OAuth redirect URLs in Supabase Auth settings.
+Configure any required Edge Function secrets in Supabase **Secrets**, not in
+`.env` or GitHub source. Market-data keys, AI-provider keys, mail/SMS credentials,
+and encryption keys are optional or feature-specific; never substitute a
+service-role key into the client app.
+
+The `Verify application` GitHub Action runs TypeScript checking and a production
+build on pull requests and pushes to `main`. Existing Edge Function workflows
+also require the two publishable GitHub Actions secrets listed below.
+
 ## How can I edit this code?
 
 There are several ways of editing your application.
@@ -121,5 +181,4 @@ Regression coverage lives in
 `supabase/functions/_tests/audit_logs_rls_test.ts` and asserts that (a) the
 anon key cannot read `admin_notifications_rejected` rows and (b) the required
 grants exist in the migration history with no anon grant.
-
 

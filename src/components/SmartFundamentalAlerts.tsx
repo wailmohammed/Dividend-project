@@ -47,3 +47,5 @@ export const SmartFundamentalAlerts: React.FC = () => {
     </div>
   );
 };
+
+export default SmartFundamentalAlerts;
