@@ -1,21 +1,14 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Checkbox } from './ui/checkbox';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { cleanSymbol } from '@/lib/utils';
-import { differenceInDays, format } from 'date-fns';
+import { fetchMarketPrices, PriceData } from '@/services/marketDataService';
 import {
-  Scissors, TrendingDown, AlertTriangle, DollarSign,
-  Calendar, Info, CheckCircle2, ArrowRight
+  Scissors, TrendingDown, AlertTriangle, Info, CheckCircle2
 } from 'lucide-react';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from './ui/tooltip';
 
 interface HarvestCandidate {
   symbol: string;
@@ -25,25 +18,32 @@ interface HarvestCandidate {
   currentPrice: number;
   unrealizedLoss: number;
   unrealizedLossPercent: number;
-  holdingPeriod: number; // days
-  isLongTerm: boolean;
-  potentialTaxSavings: number;
-  washSaleRisk: boolean;
 }
 
 export const TaxLossHarvesting: React.FC = () => {
   const { activePortfolio } = usePortfolio();
   const [selectedCandidates, setSelectedCandidates] = useState<Set<string>>(new Set());
-  const [taxRate, setTaxRate] = useState(0.35); // Assume 35% marginal rate
+  const [quotes, setQuotes] = useState<Record<string, PriceData>>({});
+  const [quotesLoading, setQuotesLoading] = useState(false);
+  const holdings = activePortfolio?.holdings || [];
+  const symbols = useMemo(() => [...new Set(holdings.map(h => cleanSymbol(h.symbol)))], [holdings]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!symbols.length) { setQuotes({}); return; }
+    setQuotesLoading(true);
+    fetchMarketPrices(symbols, 'mixed').then(data => { if (!cancelled) setQuotes(data); })
+      .catch(() => { if (!cancelled) setQuotes({}); })
+      .finally(() => { if (!cancelled) setQuotesLoading(false); });
+    return () => { cancelled = true; };
+  }, [symbols.join('|')]);
 
   // Find holdings with unrealized losses
   const candidates = useMemo((): HarvestCandidate[] => {
-    const holdings = activePortfolio?.holdings || [];
-    const today = new Date();
-    
     return holdings
       .map(h => {
-        const currentPrice = h.currentPrice || h.avgPrice || 0;
+        const symbol = cleanSymbol(h.symbol);
+        const currentPrice = quotes[symbol]?.price || 0;
         const avgPrice = h.avgPrice || 0;
         const shares = h.shares || 0;
         const currentValue = shares * currentPrice;
@@ -51,31 +51,19 @@ export const TaxLossHarvesting: React.FC = () => {
         const unrealizedLoss = costBasis - currentValue;
         const unrealizedLossPercent = avgPrice > 0 ? ((avgPrice - currentPrice) / avgPrice) * 100 : 0;
         
-        // Simulate holding period (in real app, would come from purchase date)
-        const holdingPeriod = 30 + (h.symbol.charCodeAt(0) % 400); // Random 30-430 days
-        const isLongTerm = holdingPeriod > 365;
-        
-        // Calculate potential tax savings
-        const effectiveRate = isLongTerm ? taxRate * 0.6 : taxRate; // Long-term has lower rate
-        const potentialTaxSavings = unrealizedLoss > 0 ? unrealizedLoss * effectiveRate : 0;
-        
         return {
-          symbol: cleanSymbol(h.symbol),
+          symbol,
           name: h.name,
           shares,
           avgPrice,
           currentPrice,
           unrealizedLoss,
           unrealizedLossPercent,
-          holdingPeriod,
-          isLongTerm,
-          potentialTaxSavings,
-          washSaleRisk: false, // Would need to check recent transactions
         };
       })
-      .filter(c => c.unrealizedLoss > 0) // Only include losses
+      .filter(c => c.currentPrice > 0 && c.unrealizedLoss > 0)
       .sort((a, b) => b.unrealizedLoss - a.unrealizedLoss);
-  }, [activePortfolio?.holdings, taxRate]);
+  }, [holdings, quotes]);
 
   const toggleCandidate = (symbol: string) => {
     setSelectedCandidates(prev => {
@@ -102,7 +90,6 @@ export const TaxLossHarvesting: React.FC = () => {
     const selected = candidates.filter(c => selectedCandidates.has(c.symbol));
     return {
       totalLoss: selected.reduce((sum, c) => sum + c.unrealizedLoss, 0),
-      totalTaxSavings: selected.reduce((sum, c) => sum + c.potentialTaxSavings, 0),
       count: selected.length,
     };
   }, [candidates, selectedCandidates]);
@@ -114,7 +101,9 @@ export const TaxLossHarvesting: React.FC = () => {
           <CheckCircle2 className="w-12 h-12 mx-auto mb-4 text-emerald-500" />
           <h3 className="text-lg font-semibold mb-2">No Harvest Opportunities</h3>
           <p className="text-muted-foreground">
-            All your positions have gains or are at break-even. No tax-loss harvesting needed.
+            {quotesLoading ? 'Loading provider quotes…' : symbols.length && !Object.keys(quotes).length
+              ? 'No verified current quotes are available. Losses cannot be estimated until a market-data provider returns prices.'
+              : 'No quote-backed unrealized losses were found from the available price and average-cost data.'}
           </p>
         </CardContent>
       </Card>
@@ -148,16 +137,14 @@ export const TaxLossHarvesting: React.FC = () => {
         {/* Summary Stats */}
         <div className="grid grid-cols-3 gap-4 p-4 bg-muted/50 rounded-lg">
           <div>
-            <div className="text-xs text-muted-foreground mb-1">Total Harvestable Loss</div>
+            <div className="text-xs text-muted-foreground mb-1">Estimated Unrealized Loss</div>
             <div className="text-xl font-bold text-red-500">
               -${candidates.reduce((sum, c) => sum + c.unrealizedLoss, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </div>
           </div>
           <div>
-            <div className="text-xs text-muted-foreground mb-1">Potential Tax Savings</div>
-            <div className="text-xl font-bold text-emerald-500">
-              ${candidates.reduce((sum, c) => sum + c.potentialTaxSavings, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-            </div>
+            <div className="text-xs text-muted-foreground mb-1">Tax impact</div>
+            <div className="text-sm font-medium">Unavailable</div>
           </div>
           <div>
             <div className="text-xs text-muted-foreground mb-1">Candidates</div>
@@ -188,17 +175,9 @@ export const TaxLossHarvesting: React.FC = () => {
                 {selectedStats.count} Position{selectedStats.count !== 1 ? 's' : ''} Selected
               </p>
               <p className="text-sm text-muted-foreground">
-                ${selectedStats.totalLoss.toLocaleString(undefined, { maximumFractionDigits: 0 })} in losses
-                {' → '}
-                <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                  ${selectedStats.totalTaxSavings.toLocaleString(undefined, { maximumFractionDigits: 0 })} potential savings
-                </span>
+                ${selectedStats.totalLoss.toLocaleString(undefined, { maximumFractionDigits: 0 })} estimated unrealized losses. Tax savings are not calculated without dated tax lots and your tax profile.
               </p>
             </div>
-            <Button className="gap-2">
-              <ArrowRight className="w-4 h-4" />
-              Generate Sell Orders
-            </Button>
           </div>
         )}
 
@@ -225,27 +204,7 @@ export const TaxLossHarvesting: React.FC = () => {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-bold">{candidate.symbol}</span>
-                    <Badge variant="outline" className={candidate.isLongTerm ? 'text-primary' : ''}>
-                      {candidate.isLongTerm ? 'Long-term' : 'Short-term'}
-                    </Badge>
-                    {candidate.washSaleRisk && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger>
-                            <Badge variant="destructive" className="gap-1">
-                              <AlertTriangle className="w-3 h-3" />
-                              Wash Sale Risk
-                            </Badge>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p className="text-xs max-w-xs">
-                              You may have recently purchased this security. Selling now could 
-                              trigger wash-sale rules, disallowing the loss deduction.
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
+                    <Badge variant="outline">Quote-backed estimate</Badge>
                   </div>
                   <div className="text-sm text-muted-foreground">{candidate.name}</div>
                 </div>
@@ -263,12 +222,8 @@ export const TaxLossHarvesting: React.FC = () => {
                 </div>
                 <div className="text-right min-w-[100px]">
                   <div className="text-xs text-muted-foreground">Tax Savings</div>
-                  <div className="font-semibold text-emerald-500">
-                    ${candidate.potentialTaxSavings.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {candidate.shares} shares
-                  </div>
+                  <div className="font-semibold">Unavailable</div>
+                  <div className="text-xs text-muted-foreground">{candidate.shares} shares · tax lots needed</div>
                 </div>
               </div>
             </div>
@@ -279,9 +234,7 @@ export const TaxLossHarvesting: React.FC = () => {
         <div className="flex items-start gap-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs">
           <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
           <p className="text-amber-700 dark:text-amber-400">
-            <strong>Disclaimer:</strong> This is for informational purposes only and does not constitute 
-            tax advice. Consult a qualified tax professional before making investment decisions based on 
-            tax considerations. Tax rates and regulations vary by jurisdiction.
+            <strong>Tax lot information is incomplete.</strong> Acquisition dates, adjustments, recent transactions, and jurisdiction-specific tax rules are not connected, so holding periods, wash-sale status, eligible deductions, and tax savings are not estimated. This is not tax advice.
           </p>
         </div>
       </CardContent>
