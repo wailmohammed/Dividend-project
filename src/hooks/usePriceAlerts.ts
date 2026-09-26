@@ -17,12 +17,6 @@ export interface PriceAlert {
   updated_at: string;
 }
 
-interface WebSocketPriceUpdate {
-  symbol: string;
-  price: number;
-  timestamp: number;
-}
-
 export const usePriceAlerts = () => {
   const { user } = useAuth();
   const isDemoMode = !user || user.id === 'demo-user' || getDemoModeEnabled();
@@ -30,8 +24,8 @@ export const usePriceAlerts = () => {
   const [loading, setLoading] = useState(true);
   const [sendingNotification, setSendingNotification] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
   const priceCallbacksRef = useRef<Map<string, (price: number) => void>>(new Map());
+  const triggeredAlertIdsRef = useRef<Set<string>>(new Set());
 
   const fetchAlerts = useCallback(async () => {
     // Return demo data in demo mode
@@ -61,38 +55,6 @@ export const usePriceAlerts = () => {
     }
   }, [user?.id, isDemoMode]);
 
-  // Simulated WebSocket connection for price updates
-  const connectWebSocket = useCallback((symbols: string[]) => {
-    if (symbols.length === 0) return;
-
-    // Simulate WebSocket with interval-based price updates
-    // In production, this would connect to a real WebSocket service like Finnhub
-    const simulatePriceUpdates = () => {
-      symbols.forEach(symbol => {
-        const callback = priceCallbacksRef.current.get(symbol);
-        if (callback) {
-          // Simulate price changes (±2% random fluctuation)
-          const basePrice = 100 + (symbol.charCodeAt(0) % 100); // Pseudo-random base
-          const fluctuation = (Math.random() - 0.5) * 4;
-          const newPrice = basePrice * (1 + fluctuation / 100);
-          callback(newPrice);
-        }
-      });
-    };
-
-    // Initial update
-    simulatePriceUpdates();
-
-    // Update every 10 seconds (simulated real-time)
-    const interval = setInterval(simulatePriceUpdates, 10000);
-    setWsConnected(true);
-
-    return () => {
-      clearInterval(interval);
-      setWsConnected(false);
-    };
-  }, []);
-
   // Register price update callback for a symbol
   const onPriceUpdate = useCallback((symbol: string, callback: (price: number) => void) => {
     priceCallbacksRef.current.set(symbol, callback);
@@ -106,15 +68,6 @@ export const usePriceAlerts = () => {
   useEffect(() => {
     fetchAlerts();
   }, [fetchAlerts]);
-
-  // Auto-connect WebSocket when alerts exist
-  useEffect(() => {
-    const activeSymbols = alerts.filter(a => a.is_active).map(a => a.symbol);
-    if (activeSymbols.length > 0) {
-      const cleanup = connectWebSocket(activeSymbols);
-      return cleanup;
-    }
-  }, [alerts, connectWebSocket]);
 
   const createAlert = async (symbol: string, targetPrice: number, alertType: 'above' | 'below') => {
     if (!user?.id) return;
@@ -204,7 +157,6 @@ export const usePriceAlerts = () => {
     }
   };
 
-  // Check if a price triggers any alerts
   const checkPriceAgainstAlerts = useCallback((symbol: string, price: number) => {
     const matchingAlerts = alerts.filter(
       a => a.symbol.toUpperCase() === symbol.toUpperCase() && a.is_active && !a.triggered_at
@@ -221,6 +173,40 @@ export const usePriceAlerts = () => {
       }
     }
   }, [alerts, sendAlertNotification]);
+
+  // Listen for persisted provider quote updates; no synthetic prices are generated.
+  useEffect(() => {
+    const activeSymbols = [...new Set(alerts.filter(alert => alert.is_active).map(alert => alert.symbol.toUpperCase()))];
+    if (!activeSymbols.length || isDemoMode) {
+      setWsConnected(false);
+      return;
+    }
+
+    const channel = supabase.channel(`price-alert-quotes-${user?.id || 'anonymous'}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'market_data_cache' }, payload => {
+        const quote = payload.new as { symbol?: string; price?: number; source?: string; updated_at?: string };
+        if (!quote?.symbol || !activeSymbols.includes(quote.symbol.toUpperCase()) || quote.source === 'mock') return;
+        const price = Number(quote.price);
+        const updatedAt = quote.updated_at ? Date.parse(quote.updated_at) : 0;
+        if (!(price > 0) || !Number.isFinite(updatedAt) || Date.now() - updatedAt > 24 * 60 * 60 * 1000) return;
+        const symbol = quote.symbol.toUpperCase();
+        priceCallbacksRef.current.get(symbol)?.(price);
+        alerts.filter(alert => alert.symbol.toUpperCase() === symbol && alert.is_active && !alert.triggered_at && !triggeredAlertIdsRef.current.has(alert.id))
+          .forEach(alert => {
+            const triggered = alert.alert_type === 'above' ? price >= alert.target_price : price <= alert.target_price;
+            if (triggered) {
+              triggeredAlertIdsRef.current.add(alert.id);
+              void sendAlertNotification(alert, price).catch(() => triggeredAlertIdsRef.current.delete(alert.id));
+            }
+          });
+      })
+      .subscribe(status => setWsConnected(status === 'SUBSCRIBED'));
+
+    return () => {
+      void supabase.removeChannel(channel);
+      setWsConnected(false);
+    };
+  }, [alerts, isDemoMode, user?.id, sendAlertNotification]);
 
   return {
     alerts,

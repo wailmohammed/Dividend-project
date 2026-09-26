@@ -203,19 +203,9 @@ serve(async (req: Request) => {
 
           const dividendsReceived = dividends?.reduce((sum, d) => sum + Number(d.amount), 0) || 0;
 
-          // Calculate individual stock changes (mock for now - would need price history)
-          const stockChanges = holdings.map(h => ({
-            symbol: h.symbol,
-            change: ((h.current_price || h.avg_price) - h.avg_price) / h.avg_price * 100
-          }));
-
-          const topGainers = stockChanges.filter(s => s.change > 0)
-            .sort((a, b) => b.change - a.change)
-            .slice(0, 3);
-          
-          const topLosers = stockChanges.filter(s => s.change < 0)
-            .sort((a, b) => a.change - b.change)
-            .slice(0, 3);
+          // Individual weekly gainers/losers require dated per-symbol history.
+          const topGainers: Array<{ symbol: string; change: number }> = [];
+          const topLosers: Array<{ symbol: string; change: number }> = [];
 
           portfolioSummaries.push({
             name: portfolio.name,

@@ -17,21 +17,6 @@ const CRYPTO_MAP: Record<string, string> = {
   'DOT': 'polkadot', 'DOGE': 'dogecoin', 'MATIC': 'matic-network',
 };
 
-// Known dividend yields for common stocks
-const KNOWN_DIVIDEND_YIELDS: Record<string, number> = {
-  'AAPL': 0.45, 'MSFT': 0.75, 'JNJ': 2.9, 'KO': 2.75, 'PEP': 2.65,
-  'PG': 2.35, 'VZ': 6.3, 'T': 5.8, 'XOM': 3.4, 'CVX': 4.2,
-  'ABBV': 3.55, 'MRK': 2.5, 'PFE': 5.8, 'O': 5.4, 'MAIN': 6.1,
-  'SCHD': 3.5, 'VOO': 1.35, 'VTI': 1.45, 'SPY': 1.3, 'QQQ': 0.55,
-  'JEPI': 7.2, 'JEPQ': 9.5, 'QYLD': 11.5, 'RYLD': 12.0,
-  'LOW': 1.85, 'HD': 2.25, 'WMT': 1.45, 'COST': 0.55,
-  'DIS': 0.9, 'CMCSA': 2.8, 'CSCO': 2.8, 'INTC': 1.4,
-  'IBM': 4.6, 'VIG': 1.8, 'DVY': 3.5, 'HDV': 3.8, 'VYM': 2.9,
-  'NKE': 1.45, 'UNH': 1.4, 'V': 0.75, 'MA': 0.55,
-  'JPM': 2.15, 'BAC': 2.4, 'WFC': 2.5, 'C': 3.2, 'GS': 2.3,
-  'NVDA': 0.03, 'GOOGL': 0.5, 'AMZN': 0, 'META': 0.4, 'TSLA': 0,
-};
-
 interface PriceData {
   price: number;
   change: number;
@@ -104,7 +89,6 @@ async function fetchFromFinnhub(symbol: string): Promise<PriceData | null> {
       price: data.c,
       change: data.d || 0,
       changePercent: data.dp || 0,
-      dividendYield: KNOWN_DIVIDEND_YIELDS[symbol] || 0,
     };
   } catch (error) {
     console.error(`Error fetching ${symbol}:`, error);
@@ -137,7 +121,6 @@ async function fetchFromStooq(symbol: string): Promise<PriceData | null> {
       price,
       change,
       changePercent,
-      dividendYield: KNOWN_DIVIDEND_YIELDS[symbol] || 0,
     };
   }
 
@@ -413,7 +396,7 @@ serve(async (req) => {
               price: priceData.price,
               change: priceData.change,
               change_percent: priceData.changePercent,
-              dividend_yield: priceData.dividendYield || KNOWN_DIVIDEND_YIELDS[symbol] || 0,
+              dividend_yield: priceData.dividendYield ?? null,
               sector: priceData.sector || null,
               source,
               updated_at: new Date().toISOString(),
@@ -432,7 +415,7 @@ serve(async (req) => {
             .from('holdings')
             .update({
               current_price: priceData.price,
-              dividend_yield: priceData.dividendYield || KNOWN_DIVIDEND_YIELDS[symbol] || 0,
+              dividend_yield: priceData.dividendYield ?? null,
               updated_at: new Date().toISOString(),
             })
             .ilike('symbol', `${symbol}%`);

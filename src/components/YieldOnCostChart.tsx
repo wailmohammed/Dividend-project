@@ -25,7 +25,8 @@ export const YieldOnCostChart = ({ holdings, dividends = [] }: YieldOnCostChartP
   const chartData = useMemo(() => {
     // Only include holdings with cost basis
     const eligibleHoldings = holdings.filter(h => h.avgPrice > 0 && h.shares > 0);
-    if (eligibleHoldings.length === 0) return { data: [], symbols: [] };
+    if (eligibleHoldings.length === 0) return { data: [], symbols: [], hasRealData: false };
+    if (dividends.length === 0) return { data: [], symbols: [], hasRealData: false };
 
     const now = new Date();
     const months: { key: string; label: string; start: Date; end: Date }[] = [];
@@ -39,36 +40,20 @@ export const YieldOnCostChart = ({ holdings, dividends = [] }: YieldOnCostChartP
       });
     }
 
-    const hasRealDividends = dividends.length > 0;
-
     // Calculate YoC per holding per month
     const holdingYocData = eligibleHoldings.map(h => {
       const costBasis = h.avgPrice * h.shares;
       if (costBasis === 0) return null;
 
       const monthlyYoc = months.map(m => {
-        if (hasRealDividends) {
-          // Use actual dividend payments from DB
-          const monthDividends = dividends.filter(d =>
-            d.symbol === h.symbol &&
-            isWithinInterval(parseISO(d.pay_date || d.ex_date), { start: m.start, end: m.end })
-          );
-          const monthlyDivIncome = monthDividends.reduce((sum, d) => sum + Number(d.amount) * h.shares, 0);
-          // Annualize: monthly income * 12, then divide by cost basis
-          const annualizedYoc = (monthlyDivIncome * 12 / costBasis) * 100;
-          return { month: m.label, yoc: parseFloat(annualizedYoc.toFixed(2)) };
-        } else {
-          // Fallback: use current dividend yield as YoC estimate with slight historical variation
-          const currentYield = h.dividendYield || 0;
-          if (currentYield === 0) return { month: m.label, yoc: 0 };
-          const currentPrice = h.currentPrice || h.avgPrice;
-          const yieldOnCost = (currentPrice * currentYield) / (h.avgPrice * 100) * 100;
-          const monthIdx = months.indexOf(m);
-          const progress = (monthIdx + 1) / 12;
-          const startYoc = yieldOnCost * 0.9;
-          const val = startYoc + (yieldOnCost - startYoc) * progress;
-          return { month: m.label, yoc: parseFloat(Math.max(val, 0).toFixed(2)) };
-        }
+        const monthDividends = dividends.filter(d =>
+          d.symbol === h.symbol &&
+          isWithinInterval(parseISO(d.pay_date || d.ex_date), { start: m.start, end: m.end })
+        );
+        const monthlyDivIncome = monthDividends.reduce((sum, d) => sum + Number(d.amount) * h.shares, 0);
+        // Annualize recorded payments for a comparable monthly trend.
+        const annualizedYoc = (monthlyDivIncome * 12 / costBasis) * 100;
+        return { month: m.label, yoc: parseFloat(annualizedYoc.toFixed(2)) };
       });
 
       const avgYoc = monthlyYoc.reduce((s, d) => s + d.yoc, 0) / monthlyYoc.length;
@@ -80,7 +65,7 @@ export const YieldOnCostChart = ({ holdings, dividends = [] }: YieldOnCostChartP
       .sort((a, b) => (b?.avgYoc || 0) - (a?.avgYoc || 0))
       .slice(0, 6);
 
-    if (topHoldings.length === 0) return { data: [], symbols: [] };
+    if (topHoldings.length === 0) return { data: [], symbols: [], hasRealData: false };
 
     // Merge into unified chart data
     const merged = months.map((m, idx) => {
@@ -94,11 +79,22 @@ export const YieldOnCostChart = ({ holdings, dividends = [] }: YieldOnCostChartP
     return {
       data: merged,
       symbols: topHoldings.map(h => h!.symbol),
-      hasRealData: hasRealDividends,
+      hasRealData: true,
     };
   }, [holdings, dividends]);
 
-  if (chartData.symbols.length === 0) return null;
+  if (chartData.symbols.length === 0) {
+    return holdings.some(h => h.avgPrice > 0 && h.shares > 0) ? (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg"><Percent className="h-5 w-5 text-primary" />Yield on Cost Over Time</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground">
+          Record dated dividend payments to build this chart. Current yield alone cannot show how yield on cost changed historically.
+        </CardContent>
+      </Card>
+    ) : null;
+  }
 
   const chartConfig = Object.fromEntries(
     chartData.symbols.map((s, i) => [s, { label: s, color: COLORS[i % COLORS.length] }])
@@ -112,9 +108,7 @@ export const YieldOnCostChart = ({ holdings, dividends = [] }: YieldOnCostChartP
           Yield on Cost (YoC) Over Time
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          {(chartData as any).hasRealData
-            ? 'Based on actual dividend payments relative to your purchase price.'
-            : 'Estimated from current yield data — add dividend records for real tracking.'}
+          'Calculated from dividend payments recorded in your ledger, relative to your purchase price.'
         </p>
       </CardHeader>
       <CardContent>

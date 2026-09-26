@@ -518,26 +518,37 @@ serve(async (req) => {
       }
 
       case 'check_price_alerts': {
-        // Check price alerts against current prices
         const triggeredAlerts: any[] = [];
-        
+        const unavailableSymbols: string[] = [];
         if (alerts && alerts.length > 0) {
           // Validate alerts belong to the authenticated user
           const userAlerts = alerts.filter((a: PriceAlert) => a.user_id === authenticatedUserId);
-          
+          const symbols = [...new Set(userAlerts.map((a: PriceAlert) => a.symbol.toUpperCase()))];
+          const { data: quoteRows, error: quoteError } = symbols.length
+            ? await supabase.from('market_data_cache').select('symbol, price, source, updated_at').in('symbol', symbols)
+            : { data: [], error: null };
+          if (quoteError) throw quoteError;
+          const quotes = new Map((quoteRows || []).map((row: any) => [row.symbol.toUpperCase(), row]));
+          const maxAgeMs = 24 * 60 * 60 * 1000;
           for (const alert of userAlerts) {
-            // Simulate price check (in production, fetch real prices)
-            const mockPrice = getMockPrice(alert.symbol);
-            
+            const quote = quotes.get(alert.symbol.toUpperCase());
+            const quotePrice = Number(quote?.price);
+            const quoteAge = quote?.updated_at ? Date.now() - new Date(quote.updated_at).getTime() : Infinity;
+            if (!quote || quote.source === 'mock' || !(quotePrice > 0) || quoteAge > maxAgeMs) {
+              unavailableSymbols.push(alert.symbol.toUpperCase());
+              continue;
+            }
             const triggered = alert.condition === 'ABOVE' 
-              ? mockPrice >= alert.target_price
-              : mockPrice <= alert.target_price;
+              ? quotePrice >= alert.target_price
+              : quotePrice <= alert.target_price;
               
             if (triggered) {
               triggeredAlerts.push({
                 ...alert,
-                current_price: mockPrice,
-                triggered_at: new Date().toISOString()
+                current_price: quotePrice,
+                price_source: quote.source,
+                quote_updated_at: quote.updated_at,
+                triggered_at: new Date().toISOString(),
               });
             }
           }
@@ -547,6 +558,7 @@ serve(async (req) => {
           JSON.stringify({ 
             success: true, 
             triggered: triggeredAlerts,
+            unavailable_symbols: [...new Set(unavailableSymbols)],
             checked_at: new Date().toISOString()
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -722,19 +734,23 @@ serve(async (req) => {
       }
 
       case 'get_market_summary': {
-        // Return a market summary for the daily briefing (public data, but still requires auth)
+        const symbolKeys: Record<string, string> = { SPY: 'sp500_change', QQQ: 'nasdaq_change', DIA: 'dow_change' };
+        const { data: quoteRows, error: quoteError } = await supabase
+          .from('market_data_cache')
+          .select('symbol, change_percent, source, updated_at')
+          .in('symbol', Object.keys(symbolKeys));
+        if (quoteError) throw quoteError;
+        const bySymbol = new Map((quoteRows || []).filter((row: any) => row.source !== 'mock').map((row: any) => [row.symbol, row]));
         const summary = {
-          sp500_change: (Math.random() * 2 - 1).toFixed(2),
-          nasdaq_change: (Math.random() * 3 - 1.5).toFixed(2),
-          dow_change: (Math.random() * 1.5 - 0.75).toFixed(2),
-          vix: (15 + Math.random() * 10).toFixed(1),
-          market_mood: Math.floor(Math.random() * 100),
-          top_movers: [
-            { symbol: 'NVDA', change: (Math.random() * 5).toFixed(2) },
-            { symbol: 'TSLA', change: (Math.random() * 4 - 2).toFixed(2) },
-            { symbol: 'AAPL', change: (Math.random() * 2 - 1).toFixed(2) },
-          ],
-          generated_at: new Date().toISOString()
+          sp500_change: bySymbol.get('SPY')?.change_percent ?? null,
+          nasdaq_change: bySymbol.get('QQQ')?.change_percent ?? null,
+          dow_change: bySymbol.get('DIA')?.change_percent ?? null,
+          vix: null,
+          market_mood: null,
+          top_movers: [],
+          source: 'market_data_cache',
+          generated_at: new Date().toISOString(),
+          last_quote_updated_at: [...bySymbol.values()].map((row: any) => row.updated_at).sort().at(-1) || null,
         };
 
         return new Response(
@@ -757,18 +773,3 @@ serve(async (req) => {
     );
   }
 });
-
-function getMockPrice(symbol: string): number {
-  const prices: Record<string, number> = {
-    'AAPL': 178.50 + (Math.random() * 10 - 5),
-    'MSFT': 378.20 + (Math.random() * 20 - 10),
-    'GOOGL': 141.80 + (Math.random() * 10 - 5),
-    'AMZN': 178.25 + (Math.random() * 15 - 7.5),
-    'NVDA': 495.22 + (Math.random() * 30 - 15),
-    'META': 505.45 + (Math.random() * 25 - 12.5),
-    'TSLA': 248.50 + (Math.random() * 20 - 10),
-    'BTC': 67500 + (Math.random() * 2000 - 1000),
-    'ETH': 3450 + (Math.random() * 200 - 100),
-  };
-  return prices[symbol.toUpperCase()] || 100 + (Math.random() * 20 - 10);
-}
